@@ -3,9 +3,9 @@
 # 脚本维护人员   星星叫
 # 脚本更新时间   2026-01-25
 # 脚本适用环境   Ubuntu 18.04/22.04
-# 升级脚本编号   18030.16.7
+# 升级脚本编号   18030.16.7.1
 
-SHELL_VERSION='18030.16.7'
+SHELL_VERSION='18030.16.7.1'
 
 UBUNTU_MODE=$(ps -ef | grep desktop | grep -v grep | wc -l)
 
@@ -23,15 +23,15 @@ FREEDISK=$(df -h | grep -w / | awk -F " " '{print $(NF-2)}'| cut -c1-2 | tr -d '
 
 #------------------------------------------------------
 
-UPDATE_ID="1DWgPe1cHp9QZYVTYlWo0a2-Okgj_sPR9"
+UPDATE_ID="1BVjd3VRYcDQnopmDreYFU3Bd3zz3kQ7x"
 
-UPDATE_MD5='553fec18251bd1ff627e5e16327fdfce'
+UPDATE_MD5='2bdefeeeba708c0a67efe3b2cbb686b4'
 
 #------------------------------------------------------
 
-KPOS_ID="1o5kihpD4C8-ERHNnV17r2eOpPnC3219w"
+KPOS_ID="1-EKyOyVkhCG4ewEJxTgmf2pkG8mY8tEM"
 
-KPOS_MD5='7a48f90ffac9100883e3ffdac29d4fe8'
+KPOS_MD5='aefdfc3f16f86b89e7caa17f93f7ac87'
 
 ######################################################
 update_316 (){
@@ -148,6 +148,7 @@ else
 fi
 
 ####################################以下为升级脚本####################################
+
 #!/bin/bash
 
 SUDO='sudo'
@@ -156,7 +157,7 @@ UPDATE_FILE_PACKAGE=menusifu_magic_update.tar.gz
 UPDATE_FILE=menusifu_magic_update
 VERSION_DIR=/home/menu/.menusifu/POS/data/version
 UNTAR=${SUDO}' tar zxf'
-NEW_UPDATE_POS_VERSION="1.8.0.30.16.7"
+NEW_UPDATE_POS_VERSION="1.8.0.30.16.7.1"
 LAST_UPDATE_POS_VERSION=""
 NEW_UPDATE_SHELL_VERSION=30
 LAST_UPDATE_SHELL_VERSION=0
@@ -237,7 +238,6 @@ LUBUNTU_PROCESS_ID=$(ps -ef | grep 'Lubuntu\|lxqt' | grep -v grep | awk '{print 
 if [ -n "$LUBUNTU_PROCESS_ID" ];then
     IS_LUBUNTU=1
 fi
-
 
 ################### Check Update Version ######################
 echo  "\033[32m ################## check update version... #################### \033[0m"
@@ -373,7 +373,8 @@ $SUDO rm -rf $UPDATE_FILE
 ####################################以上为升级脚本####################################
 
 sudo awk -F " " 'BEGIN{OFS="---> "}NR==6{print $2,$3}' /home/menu/POS_update.sh >> /home/menu/pos_update_history.log
-sudo date  "+本次升级时间是: %Y-%m-%d %H:%M:%S" >> /home/menu/pos_update_history.log
+sudo date  "+本次升级时间是: %Y-%m-%d %H:%M:%S" >> /home/menu/pos_update_history.log && sudo /usr/bin/last | grep still >> /home/menu/pos_update_history.log
+	sleep 1
 sudo rm -f /var/spool/cron/crontabs/menu 
 sudo echo "45 5 * * * sudo service tomcat restart" > /var/spool/cron/crontabs/menu
 sudo echo "10 15 * * 0 sudo rm -f /opt/backup/*.zip" >> /var/spool/cron/crontabs/menu
@@ -390,7 +391,11 @@ echo "\033[33m +--------------------------------------------------------------+\
 
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
-sudo cd ~ && wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1U72MrZr57EDOvEe3mhSrdGH3bnVD6SES' -O pit && unzip pit && sudo cp -rf /home/menu/1.8.0.30.16.7-fast-0-PIT-14233/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+sudo rm -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381
+wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1ZsAQctnQ8tthSud1TV8JtDopDcpH0yu3' -O /home/menu/pit 
+unzip /home/menu/pit 
+sudo cp -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
+sudo service tomcat restart
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
@@ -412,7 +417,7 @@ emenu_update (){
 	echo "\033[34m +--------------------------------------------------------------+\033[0m"
 	echo ""
 
-	cd /home/menu/ && rm -f /home/menu/emenu.zip && wget --user=baol22 --password=1qaz@WSX6788 http://menusifu.com.cn:29120/EMENU/emenu.zip
+	cd /home/menu/ && rm -f /home/menu/emenu.zip && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/EMENU/emenu.zip
 	sleep 1
 	
 	echo "\033[33m===========================================\033[0m"
@@ -439,7 +444,7 @@ kiosk_update (){
 	echo "\033[34m +--------------------------------------------------------------+\033[0m"
 	echo ""
 		
-	cd /home/menu/ && rm -f /home/menu/kiosklite.zip && wget --user=baol22 --password=1qaz@WSX6788 http://menusifu.com.cn:29120/KIOSK/kiosklite.zip
+	cd /home/menu/ && rm -f /home/menu/kiosklite.zip && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/KIOSK/kiosklite.zip
 	sleep 1
 	
 	echo "\033[33m===========================================\033[0m"
@@ -508,12 +513,12 @@ fi
 
 if [ -d "$FASTVERSION_DIR" ];then
     if [ -n "$(ls -A "$FASTVERSION_DIR")" -a $MYSQL_STATUS -ne 0 ]; then
-		echo "\033[33m +--------------------------------------------------------+\033[0m" 
-		echo "\033[33m |                  已安装的快速迭代补丁                  |\033[0m"
-		echo "\033[33m |                                                        |\033[0m"
-	    echo "\033[33m |             Salefore店铺没有备注就可以升级             |\033[0m" 
 		echo "\033[33m +--------------------------------------------------------+\033[0m"
-		grep -Evh "功能说明|适用版本|补丁信息" /opt/apache-tomcat-7.0.93/webapps/kpos/fastversion/*.md
+		echo "\033[33m |                                                        |\033[0m"	
+		echo "\033[33m |          已安装的快速迭代补丁(Fast0补丁不显示)         |\033[0m"
+		echo "\033[33m |                                                        |\033[0m"
+		echo "\033[33m +--------------------------------------------------------+\033[0m"
+		find /opt/apache-tomcat-7.0.93/webapps/kpos/fastversion/ -name "*.md" | grep -v 0.md | xargs grep -Evh "功能说明|适用版本|补丁信息"
 		echo ""
 		echo ""
         read -p "`echo "\e[5;41m当前POS有安装快速迭代补丁，确定要升级吗？(y/n): \e[0m"` "  UPGRADE
@@ -538,14 +543,14 @@ else
 	echo "\033[33m |                   POS模式---$POS_MODE                     |\033[0m"
 fi
 echo "\033[33m |                                                        |\033[0m" 
-echo "\033[33m | 1：升级 POS $SHELL_VERSION                                 |\033[0m"
+echo "\033[33m | 1：升级 POS $SHELL_VERSION                               |\033[0m"
 echo "\033[33m | 2: 升级 E-Menu 最新版本                                |\033[0m"
 echo "\033[33m | 3: 升级 Kiosk  最新版本                                |\033[0m"
-echo "\033[33m | 4: 升级 Datahub 1.0.1.19                               |\033[0m"                            
+echo "\033[33m | 4: 升级 Datahub 最新版本                               |\033[0m"                            
 echo "\033[33m |                                                        |\033[0m"
 echo "\033[33m | 0: 退出程序                                            |\033[0m"
 echo "\033[33m |                                                        |\033[0m"
-echo "\033[33m |                                     版本号--$SHELL_VERSION |\033[0m"
+echo "\033[33m |                                   版本号--$SHELL_VERSION |\033[0m"
 echo "\033[33m +--------------------------------------------------------+\033[0m"
 cat /home/menu/latest_update.log 2>/dev/null | sed s"/^/`echo "\033[33m   最近一次POS升级使用的升级脚本版本是--->\033[0m"` /"g
 
@@ -588,12 +593,12 @@ elif [ "$answer" = "3" ]
 
 elif [ "$answer" = "4" ]
 	then
-	cd /home/menu/ && rm -f cloudDatahub.war && wget --user=baol22 --password=1qaz@WSX6788 http://menusifu.com.cn:29120/datahub_package/cloudDatahub.war
+	cd /home/menu/ && rm -f cloudDatahub.war && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/datahub_package/cloudDatahub.war
 	sleep 1
 
 DATEHUB_MD5=`md5sum cloudDatahub.war|cut -d ' ' -f1`
 
-	if [ "$DATEHUB_MD5" = "48a19e56f8883d403ce453a63a1bb9c9" ];then
+	if [ "$DATEHUB_MD5" = "1b6ae0e2a30fc23fcb5fe6fedf0c320b" ];then
 
 	echo "\033[33m +------------------------------------------------------+\033[0m" 
 	echo "\033[33m |             CloudDatahub.war文件完整                 |\033[0m" 
