@@ -10,7 +10,7 @@ DATABASE_NAME="kpos"
 IMAGES_SOURCE_DIR="/Wisdomount/Menusifu/data/static/images"
 
 # 备份文件存储目录（可自定义）
-BACKUP_BASE_DIR="/home/menu/backup"
+BACKUP_BASE_DIR="/home/menu"
 
 # 日期时间后缀（用于备份文件名）
 DATE_SUFFIX=$(date +%Y%m%d_%H%M%S)
