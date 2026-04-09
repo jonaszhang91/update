@@ -11,6 +11,7 @@ BACKUP_DIR="/home/menu/backup"
 RCLONE_REMOTE="gdrive"          # rclone 配置的 remote 名称
 RCLONE_BACKUP_DIR="backup"      # 云端备份文件夹
 RCLONE_CONFIG_FILE="./rclone.conf"   # 配置文件位于脚本当前目录
+RCLONE_CONFIG_PASS="262410ZXj."      # rclone 配置文件解密密码（硬编码）
 
 # 互斥锁文件（使用用户可写目录）
 LOCK_FILE="/tmp/kpos_backup.lock"
@@ -35,7 +36,7 @@ check_success() {
     fi
 }
 
-# 退出时删除配置文件
+# 退出时删除配置文件（可选，根据需求）
 cleanup() {
     if [ -f "$RCLONE_CONFIG_FILE" ]; then
         rm -f "$RCLONE_CONFIG_FILE"
@@ -52,17 +53,19 @@ for cmd in mysqldump mysql tar gzip zcat rclone gunzip xz bunzip2 sudo; do
     fi
 done
 
-# 设置 rclone 配置文件
+# 设置 rclone 配置文件路径和解密密码
 if [ ! -f "$RCLONE_CONFIG_FILE" ]; then
     error "找不到 rclone 配置文件: $RCLONE_CONFIG_FILE"
     error "请将有效的 rclone.conf 放在脚本同目录下"
     exit 1
 fi
 export RCLONE_CONFIG="$RCLONE_CONFIG_FILE"
+export RCLONE_CONFIG_PASS="$RCLONE_CONFIG_PASS"
+info "已设置 rclone 配置解密密码"
 
 # 测试 rclone 连接
 if ! rclone lsd ${RCLONE_REMOTE}: &>/dev/null; then
-    error "rclone 无法连接到 Google Drive，请检查配置文件"
+    error "rclone 无法连接到 Google Drive，请检查配置文件或密码"
     exit 1
 fi
 info "Google Drive 连接正常"
@@ -283,4 +286,106 @@ restore_from_cloud() {
         return
     fi
     selected_line="${remote_files[$((sql_choice-1))]}"
-    remote_filename=$(echo "$selected_line" | awk '{$
+    remote_filename=$(echo "$selected_line" | awk '{$1=""; print substr($0,2)}')
+    info "已选择: ${remote_filename}"
+
+    # 下载到临时目录
+    local temp_dir="/tmp/kpos_restore_$$"
+    mkdir -p "$temp_dir"
+    local local_file="${temp_dir}/${remote_filename}"
+    info "正在下载 ${remote_filename} ..."
+    rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
+    if [ $? -ne 0 ] || [ ! -f "$local_file" ]; then
+        error "下载失败"
+        rm -rf "$temp_dir"
+        return 1
+    fi
+    info "下载完成: $(du -h "$local_file" | cut -f1)"
+
+    # 可选：列出云端文件夹备份
+    local remote_images=()
+    while IFS= read -r line; do
+        remote_images+=("$line")
+    done < <(rclone ls "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/" | grep "images_.*\.tar\.gz" | sort -r)
+
+    restore_img="n"
+    local images_local_file=""
+    if [ ${#remote_images[@]} -gt 0 ]; then
+        echo ""
+        warn "========== 可用的云端文件夹备份文件 =========="
+        for i in "${!remote_images[@]}"; do
+            filename=$(echo "${remote_images[$i]}" | awk '{$1=""; print substr($0,2)}')
+            size=$(echo "${remote_images[$i]}" | awk '{print $1}')
+            echo "  [$((i+1))] ${filename} (${size} bytes)"
+        done
+        read -p "是否同时恢复文件夹备份？(输入序号或 n): " img_choice
+        if [[ "$img_choice" =~ ^[0-9]+$ ]] && [ $img_choice -ge 1 ] && [ $img_choice -le ${#remote_images[@]} ]; then
+            selected_img_line="${remote_images[$((img_choice-1))]}"
+            remote_img_filename=$(echo "$selected_img_line" | awk '{$1=""; print substr($0,2)}')
+            images_local_file="${temp_dir}/${remote_img_filename}"
+            info "下载文件夹备份 ${remote_img_filename} ..."
+            rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_img_filename}" "$temp_dir/"
+            if [ $? -eq 0 ] && [ -f "$images_local_file" ]; then
+                restore_img="y"
+            else
+                warn "文件夹备份下载失败，将跳过"
+            fi
+        fi
+    fi
+
+    # 确认恢复
+    echo ""
+    warn "========================================"
+    warn "即将执行恢复操作，将覆盖现有数据！"
+    warn "数据库: ${DATABASE_NAME}"
+    [ "$restore_img" = "y" ] && warn "文件夹: ${IMAGES_SOURCE_DIR}"
+    warn "========================================"
+    read -p "确认继续？(输入 yes 继续): " confirm
+    if [ "$confirm" != "yes" ]; then
+        info "恢复操作已取消"
+        rm -rf "$temp_dir"
+        return
+    fi
+
+    restore_database_file "$local_file"
+    if [ "$restore_img" = "y" ] && [ -n "$images_local_file" ]; then
+        restore_images_file "$images_local_file"
+    fi
+
+    # 清理临时目录
+    rm -rf "$temp_dir"
+    info "========== 恢复完成 =========="
+}
+
+# ==================== 主菜单 ====================
+show_menu() {
+    echo ""
+    echo "========================================="
+    echo "     数据库 + 文件夹 备份/恢复工具"
+    echo "     本地备份目录: ${BACKUP_DIR}"
+    echo "     云端目录: ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}"
+    echo "========================================="
+    echo "1) 备份（本地 + 上传 Google Drive）"
+    echo "2) 恢复（从本地备份目录）"
+    echo "3) 恢复（从 Google Drive 下载）"
+    echo "4) 退出"
+    echo "========================================="
+    read -p "请选择 [1-4]: " choice
+    case $choice in
+        1) do_backup ;;
+        2) restore_from_local ;;
+        3) restore_from_cloud ;;
+        4) info "退出程序"; exit 0 ;;
+        *) error "无效选择"; show_menu ;;
+    esac
+}
+
+# 互斥锁检查
+exec 200> "$LOCK_FILE"
+if ! flock -n 200; then
+    error "另一个备份/恢复脚本正在运行，请稍后再试"
+    exit 1
+fi
+
+# 运行主菜单
+show_menu
