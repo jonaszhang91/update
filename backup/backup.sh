@@ -1,24 +1,19 @@
 #!/bin/bash
 
 # ==================== 配置区域 ====================
-# MySQL 配置
 MYSQL_USER="root"
 MYSQL_PASSWORD='N0mur@4$99!'
 DATABASE_NAME="kpos"
-
-# 文件夹配置（需要备份的静态资源目录）
 IMAGES_SOURCE_DIR="/Wisdomount/Menusifu/data/static/images"
-
-# 本地备份存储目录
 BACKUP_DIR="/home/menu/backup"
 
 # Google Drive 配置
 RCLONE_REMOTE="gdrive"          # rclone 配置的 remote 名称
-RCLONE_BACKUP_DIR="backup"      # 云端备份文件夹（会在 Google Drive 根目录下创建）
-RCLONE_CONFIG_FILE="./rclone.conf"   # 当前目录下的配置文件
+RCLONE_BACKUP_DIR="backup"      # 云端备份文件夹
+RCLONE_CONFIG_FILE="./rclone.conf"   # 配置文件位于脚本当前目录
 
-# 互斥锁文件
-LOCK_FILE="/var/run/kpos_backup.lock"
+# 互斥锁文件（使用用户可写目录）
+LOCK_FILE="/tmp/kpos_backup.lock"
 
 # 颜色输出
 RED='\033[0;31m'
@@ -39,6 +34,15 @@ check_success() {
         exit 1
     fi
 }
+
+# 退出时删除配置文件
+cleanup() {
+    if [ -f "$RCLONE_CONFIG_FILE" ]; then
+        rm -f "$RCLONE_CONFIG_FILE"
+        info "已删除配置文件: $RCLONE_CONFIG_FILE"
+    fi
+}
+trap cleanup EXIT
 
 # 检查必要命令
 for cmd in mysqldump mysql tar gzip zcat rclone gunzip xz bunzip2 sudo; do
@@ -70,7 +74,6 @@ mkdir -p "$BACKUP_DIR"
 do_backup() {
     info "开始完整备份（数据库 + 文件夹）..."
 
-    # 生成唯一文件名（时间戳 + PID）
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)_$$
     SQL_FILE="${DATABASE_NAME}_${TIMESTAMP}.sql.gz"
     IMAGES_FILE="images_${TIMESTAMP}.tar.gz"
@@ -128,12 +131,11 @@ do_backup() {
     info "云端文件保存在: ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
 }
 
-# ==================== 恢复函数（通用解压） ====================
+# ==================== 恢复通用函数 ====================
 restore_database_file() {
     local file_path="$1"
     info "正在恢复数据库从: $(basename "$file_path")"
 
-    # 检测文件类型
     local file_type
     file_type=$(file -b "$file_path" | grep -oE 'gzip|XZ|bzip2' | head -1)
     
@@ -185,7 +187,6 @@ restore_images_file() {
 restore_from_local() {
     info "扫描本地备份文件夹: ${BACKUP_DIR}"
 
-    # 列出数据库备份文件
     mapfile -t sql_files < <(find "$BACKUP_DIR" -maxdepth 1 -type f \( -name "*.sql.gz" -o -name "*.sql.xz" -o -name "*.sql.bz2" \) | sort)
     if [ ${#sql_files[@]} -eq 0 ]; then
         error "在 ${BACKUP_DIR} 中没有找到数据库备份文件"
@@ -212,7 +213,6 @@ restore_from_local() {
     selected_sql="${sql_files[$((sql_choice-1))]}"
     info "已选择: $(basename "$selected_sql")"
 
-    # 列出文件夹备份
     mapfile -t images_files < <(find "$BACKUP_DIR" -maxdepth 1 -name "images_*.tar.gz" 2>/dev/null | sort)
     restore_img="n"
     selected_images=""
@@ -231,7 +231,6 @@ restore_from_local() {
         fi
     fi
 
-    # 确认恢复
     echo ""
     warn "========================================"
     warn "即将执行恢复操作，将覆盖现有数据！"
@@ -256,7 +255,6 @@ restore_from_local() {
 restore_from_cloud() {
     info "从 Google Drive 获取备份文件列表..."
 
-    # 列出云端数据库备份文件
     local remote_files=()
     while IFS= read -r line; do
         remote_files+=("$line")
@@ -285,106 +283,4 @@ restore_from_cloud() {
         return
     fi
     selected_line="${remote_files[$((sql_choice-1))]}"
-    remote_filename=$(echo "$selected_line" | awk '{$1=""; print substr($0,2)}')
-    info "已选择: ${remote_filename}"
-
-    # 下载到临时目录
-    local temp_dir="/tmp/kpos_restore_$$"
-    mkdir -p "$temp_dir"
-    local local_file="${temp_dir}/${remote_filename}"
-    info "正在下载 ${remote_filename} ..."
-    rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
-    if [ $? -ne 0 ] || [ ! -f "$local_file" ]; then
-        error "下载失败"
-        rm -rf "$temp_dir"
-        return 1
-    fi
-    info "下载完成: $(du -h "$local_file" | cut -f1)"
-
-    # 可选：列出云端文件夹备份
-    local remote_images=()
-    while IFS= read -r line; do
-        remote_images+=("$line")
-    done < <(rclone ls "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/" | grep "images_.*\.tar\.gz" | sort -r)
-
-    restore_img="n"
-    local images_local_file=""
-    if [ ${#remote_images[@]} -gt 0 ]; then
-        echo ""
-        warn "========== 可用的云端文件夹备份文件 =========="
-        for i in "${!remote_images[@]}"; do
-            filename=$(echo "${remote_images[$i]}" | awk '{$1=""; print substr($0,2)}')
-            size=$(echo "${remote_images[$i]}" | awk '{print $1}')
-            echo "  [$((i+1))] ${filename} (${size} bytes)"
-        done
-        read -p "是否同时恢复文件夹备份？(输入序号或 n): " img_choice
-        if [[ "$img_choice" =~ ^[0-9]+$ ]] && [ $img_choice -ge 1 ] && [ $img_choice -le ${#remote_images[@]} ]; then
-            selected_img_line="${remote_images[$((img_choice-1))]}"
-            remote_img_filename=$(echo "$selected_img_line" | awk '{$1=""; print substr($0,2)}')
-            images_local_file="${temp_dir}/${remote_img_filename}"
-            info "下载文件夹备份 ${remote_img_filename} ..."
-            rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_img_filename}" "$temp_dir/"
-            if [ $? -eq 0 ] && [ -f "$images_local_file" ]; then
-                restore_img="y"
-            else
-                warn "文件夹备份下载失败，将跳过"
-            fi
-        fi
-    fi
-
-    # 确认恢复
-    echo ""
-    warn "========================================"
-    warn "即将执行恢复操作，将覆盖现有数据！"
-    warn "数据库: ${DATABASE_NAME}"
-    [ "$restore_img" = "y" ] && warn "文件夹: ${IMAGES_SOURCE_DIR}"
-    warn "========================================"
-    read -p "确认继续？(输入 yes 继续): " confirm
-    if [ "$confirm" != "yes" ]; then
-        info "恢复操作已取消"
-        rm -rf "$temp_dir"
-        return
-    fi
-
-    restore_database_file "$local_file"
-    if [ "$restore_img" = "y" ] && [ -n "$images_local_file" ]; then
-        restore_images_file "$images_local_file"
-    fi
-
-    # 清理临时目录
-    rm -rf "$temp_dir"
-    info "========== 恢复完成 =========="
-}
-
-# ==================== 主菜单 ====================
-show_menu() {
-    echo ""
-    echo "========================================="
-    echo "     数据库 + 文件夹 备份/恢复工具"
-    echo "     本地备份目录: ${BACKUP_DIR}"
-    echo "     云端目录: ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}"
-    echo "========================================="
-    echo "1) 备份（本地 + 上传 Google Drive）"
-    echo "2) 恢复（从本地备份目录）"
-    echo "3) 恢复（从 Google Drive 下载）"
-    echo "4) 退出"
-    echo "========================================="
-    read -p "请选择 [1-4]: " choice
-    case $choice in
-        1) do_backup ;;
-        2) restore_from_local ;;
-        3) restore_from_cloud ;;
-        4) info "退出程序"; exit 0 ;;
-        *) error "无效选择"; show_menu ;;
-    esac
-}
-
-# 互斥锁检查
-exec 200> "$LOCK_FILE"
-if ! flock -n 200; then
-    error "另一个备份/恢复脚本正在运行，请稍后再试"
-    exit 1
-fi
-
-# 运行主菜单
-show_menu
+    remote_filename=$(echo "$selected_line" | awk '{$
