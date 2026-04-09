@@ -1,39 +1,23 @@
 #!/bin/bash
 
 # ==================== 配置区域 ====================
-# 数据库配置
 MYSQL_USER="root"
 MYSQL_PASSWORD='N0mur@4$99!'
 DATABASE_NAME="kpos"
-
-# 文件夹配置（需要备份/恢复的静态资源目录）
 IMAGES_SOURCE_DIR="/Wisdomount/Menusifu/data/static/images"
+BACKUP_DIR="/home/menu/backup"          # 备份存储目录
+LOCK_FILE="/var/run/backup_kpos.lock"
 
-# 备份文件存储目录（可自定义）
-BACKUP_BASE_DIR="/home/menu"
-
-# 日期时间后缀（用于备份文件名）
-DATE_SUFFIX=$(date +%Y%m%d_%H%M%S)
-
-# 备份文件名
-SQL_BACKUP_FILE="${BACKUP_BASE_DIR}/${DATABASE_NAME}_${DATE_SUFFIX}.sql.gz"
-IMAGES_BACKUP_FILE="${BACKUP_BASE_DIR}/images_${DATE_SUFFIX}.tar.gz"
-
-# 恢复时需要使用的备份文件（交互式输入）
-# =================================================
-
-# 颜色输出（便于阅读）
+# 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# 打印带颜色的消息
 info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# 检查命令是否成功
 check_success() {
     if [ $? -eq 0 ]; then
         info "$1 成功"
@@ -47,86 +31,160 @@ check_success() {
 do_backup() {
     info "开始完整备份（数据库 + 文件夹）..."
 
-    # 创建备份目录
-    mkdir -p ${BACKUP_BASE_DIR}
-    check_success "创建备份目录 ${BACKUP_BASE_DIR}"
+    mkdir -p "${BACKUP_DIR}"
+    check_success "创建备份目录 ${BACKUP_DIR}"
 
-    # 1. 备份数据库并压缩
+    DATE_SUFFIX=$(date +%Y%m%d_%H%M%S)_$$
+    SQL_BACKUP_FILE="${BACKUP_DIR}/${DATABASE_NAME}_${DATE_SUFFIX}.sql.gz"
+    IMAGES_BACKUP_FILE="${BACKUP_DIR}/images_${DATE_SUFFIX}.tar.gz"
+
     info "正在备份数据库 ${DATABASE_NAME}..."
     mysqldump -u${MYSQL_USER} -p${MYSQL_PASSWORD} \
         --single-transaction --quick --triggers --routines \
         ${DATABASE_NAME} | gzip > ${SQL_BACKUP_FILE}
-    check_success "数据库备份（已压缩）: ${SQL_BACKUP_FILE}"
+    check_success "数据库备份: ${SQL_BACKUP_FILE}"
 
-    # 2. 备份文件夹并压缩（可能需要 sudo）
-    info "正在备份文件夹 ${IMAGES_SOURCE_DIR}..."
-    # 检查文件夹是否存在
     if [ ! -d "${IMAGES_SOURCE_DIR}" ]; then
-        error "文件夹 ${IMAGES_SOURCE_DIR} 不存在，跳过文件夹备份"
+        warn "文件夹 ${IMAGES_SOURCE_DIR} 不存在，跳过文件夹备份"
     else
-        # 使用 sudo 确保有读取权限（如果需要）
+        info "正在备份文件夹 ${IMAGES_SOURCE_DIR}..."
         sudo tar -czf ${IMAGES_BACKUP_FILE} ${IMAGES_SOURCE_DIR}
-        check_success "文件夹备份（已压缩）: ${IMAGES_BACKUP_FILE}"
+        check_success "文件夹备份: ${IMAGES_BACKUP_FILE}"
     fi
 
     info "========== 备份完成 =========="
-    info "数据库备份文件: ${SQL_BACKUP_FILE}"
-    info "文件夹备份文件: ${IMAGES_BACKUP_FILE}"
+    info "文件保存在: ${BACKUP_DIR}"
 }
 
-# ==================== 恢复函数 ====================
+# ==================== 恢复函数（含恢复前自动备份） ====================
 do_restore() {
     info "开始恢复操作..."
 
-    # 1. 选择要恢复的数据库备份文件
-    echo ""
-    warn "请提供数据库备份文件（.sql.gz）的完整路径："
-    read -p "> " SQL_RESTORE_FILE
-    if [ ! -f "${SQL_RESTORE_FILE}" ]; then
-        error "文件 ${SQL_RESTORE_FILE} 不存在，请检查路径"
+    if [ ! -d "${BACKUP_DIR}" ]; then
+        error "备份目录 ${BACKUP_DIR} 不存在，请先备份或修改 BACKUP_DIR 配置"
         exit 1
     fi
 
-    # 2. 选择要恢复的文件夹备份文件
-    echo ""
-    warn "请提供文件夹备份文件（.tar.gz）的完整路径（如果不需要恢复文件夹，请直接回车跳过）："
-    read -p "> " IMAGES_RESTORE_FILE
+    # 列出数据库备份文件
+    mapfile -t sql_files < <(find "${BACKUP_DIR}" -maxdepth 1 -name "${DATABASE_NAME}_*.sql.gz" 2>/dev/null | grep -v "pre_restore_" | sort)
+    if [ ${#sql_files[@]} -eq 0 ]; then
+        error "在 ${BACKUP_DIR} 中没有找到数据库备份文件（排除 pre_restore_ 文件）"
+        exit 1
+    fi
 
-    # 3. 确认恢复操作（危险）
+    echo ""
+    warn "========== 可用的数据库备份文件 =========="
+    for i in "${!sql_files[@]}"; do
+        filename=$(basename "${sql_files[$i]}")
+        size=$(du -h "${sql_files[$i]}" | cut -f1)
+        echo "  [$((i+1))] ${filename} (${size})"
+    done
+    echo "  [0] 取消"
+    read -p "请选择要恢复的数据库备份 [序号]: " sql_choice
+    if [[ ! $sql_choice =~ ^[0-9]+$ ]] || [ $sql_choice -eq 0 ]; then
+        info "取消恢复操作"
+        return
+    fi
+    if [ $sql_choice -lt 1 ] || [ $sql_choice -gt ${#sql_files[@]} ]; then
+        error "无效选择"
+        return
+    fi
+    SQL_RESTORE_FILE="${sql_files[$((sql_choice-1))]}"
+    info "已选择数据库备份: $(basename ${SQL_RESTORE_FILE})"
+
+    # 列出文件夹备份文件
+    mapfile -t images_files < <(find "${BACKUP_DIR}" -maxdepth 1 -name "images_*.tar.gz" 2>/dev/null | grep -v "pre_restore_" | sort)
+    IMAGES_RESTORE_FILE=""
+    if [ ${#images_files[@]} -gt 0 ]; then
+        echo ""
+        warn "========== 可用的文件夹备份文件 =========="
+        echo "  [0] 跳过文件夹恢复"
+        for i in "${!images_files[@]}"; do
+            filename=$(basename "${images_files[$i]}")
+            size=$(du -h "${images_files[$i]}" | cut -f1)
+            echo "  [$((i+1))] ${filename} (${size})"
+        done
+        read -p "请选择要恢复的文件夹备份 [序号]: " img_choice
+        if [[ $img_choice =~ ^[0-9]+$ ]] && [ $img_choice -gt 0 ] && [ $img_choice -le ${#images_files[@]} ]; then
+            IMAGES_RESTORE_FILE="${images_files[$((img_choice-1))]}"
+            info "已选择文件夹备份: $(basename ${IMAGES_RESTORE_FILE})"
+        else
+            info "跳过文件夹恢复"
+        fi
+    else
+        warn "没有找到文件夹备份文件，将只恢复数据库"
+    fi
+
+    # ========== 恢复前备份当前状态 ==========
+    echo ""
+    warn "========== 安全措施：恢复前自动备份当前数据 =========="
+    read -p "是否在恢复前备份当前数据？(yes/no，默认 yes): " pre_backup_confirm
+    if [[ "$pre_backup_confirm" != "no" ]]; then
+        info "开始执行恢复前备份..."
+        PRE_RESTORE_SUFFIX="pre_restore_$(date +%Y%m%d_%H%M%S)_$$"
+        SQL_PRE_BACKUP="${BACKUP_DIR}/${DATABASE_NAME}_${PRE_RESTORE_SUFFIX}.sql.gz"
+        IMAGES_PRE_BACKUP="${BACKUP_DIR}/images_${PRE_RESTORE_SUFFIX}.tar.gz"
+        
+        info "备份当前数据库到: ${SQL_PRE_BACKUP}"
+        mysqldump -u${MYSQL_USER} -p${MYSQL_PASSWORD} \
+            --single-transaction --quick --triggers --routines \
+            ${DATABASE_NAME} | gzip > ${SQL_PRE_BACKUP}
+        if [ $? -eq 0 ]; then
+            info "当前数据库备份成功"
+        else
+            warn "当前数据库备份失败，是否继续恢复？(yes/no)"
+            read -p "" continue_restore
+            if [[ "$continue_restore" != "yes" ]]; then
+                info "已取消恢复操作"
+                return
+            fi
+        fi
+        
+        if [ -d "${IMAGES_SOURCE_DIR}" ]; then
+            info "备份当前文件夹到: ${IMAGES_PRE_BACKUP}"
+            sudo tar -czf ${IMAGES_PRE_BACKUP} ${IMAGES_SOURCE_DIR}
+            if [ $? -eq 0 ]; then
+                info "当前文件夹备份成功"
+            else
+                warn "当前文件夹备份失败，但将继续恢复（建议手动检查）"
+            fi
+        fi
+        info "恢复前备份完成，文件保存在: ${BACKUP_DIR}"
+    else
+        info "跳过恢复前备份（风险自担）"
+    fi
+
+    # 最终确认
     echo ""
     warn "========================================"
-    warn "恢复操作将覆盖现有数据库和文件夹数据！"
+    warn "即将执行恢复操作，将覆盖现有数据！"
     warn "数据库: ${DATABASE_NAME}"
-    warn "文件夹: ${IMAGES_SOURCE_DIR}"
+    if [ -n "${IMAGES_RESTORE_FILE}" ]; then
+        warn "文件夹: ${IMAGES_SOURCE_DIR}"
+    fi
     warn "========================================"
     read -p "确认继续？(输入 yes 继续): " confirm
     if [ "$confirm" != "yes" ]; then
         info "恢复操作已取消"
-        exit 0
+        return
     fi
 
-    # 4. 恢复数据库
+    # 恢复数据库
     info "正在恢复数据库 ${DATABASE_NAME}..."
-    # 确保数据库存在
     mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} -e "CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};"
-    # 解压并导入，同时优化恢复速度
     zcat ${SQL_RESTORE_FILE} | mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} \
         --init-command="SET autocommit=0; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET sql_log_bin=0;" \
         ${DATABASE_NAME}
     check_success "数据库恢复"
 
-    # 5. 恢复文件夹（如果提供了文件）
-    if [ -n "${IMAGES_RESTORE_FILE}" ] && [ -f "${IMAGES_RESTORE_FILE}" ]; then
+    if [ -n "${IMAGES_RESTORE_FILE}" ]; then
         info "正在恢复文件夹到 ${IMAGES_SOURCE_DIR}..."
-        # 解压到根目录（因为打包时包含了绝对路径）
         sudo tar -xzvf ${IMAGES_RESTORE_FILE} -C /
         check_success "文件夹恢复"
-    else
-        info "未提供文件夹备份文件，跳过文件夹恢复"
     fi
 
     info "========== 恢复完成 =========="
-    info "请手动验证数据完整性"
+    info "恢复前备份已保存，如有问题可使用 pre_restore_ 文件回滚"
 }
 
 # ==================== 主菜单 ====================
@@ -134,6 +192,7 @@ show_menu() {
     echo ""
     echo "====================================="
     echo "    MySQL + 文件夹 备份/恢复工具"
+    echo "    备份目录: ${BACKUP_DIR}"
     echo "====================================="
     echo "1) 备份（数据库 + 文件夹）"
     echo "2) 恢复（数据库 + 文件夹）"
@@ -158,7 +217,14 @@ show_menu() {
     esac
 }
 
-# 检查必要命令是否存在
+# 互斥锁
+exec 200> "$LOCK_FILE"
+if ! flock -n 200; then
+    error "另一个备份/恢复脚本正在运行，请稍后再试"
+    exit 1
+fi
+
+# 检查必要命令
 for cmd in mysqldump mysql tar gzip zcat sudo; do
     if ! command -v $cmd &> /dev/null; then
         error "命令 $cmd 未找到，请先安装"
@@ -166,12 +232,4 @@ for cmd in mysqldump mysql tar gzip zcat sudo; do
     fi
 done
 
-# 检查是否以 root 运行（推荐，因为可能需要 sudo 操作文件夹）
-if [ "$EUID" -eq 0 ]; then
-    warn "当前以 root 用户运行，将自动拥有所有权限"
-else
-    warn "当前用户非 root，某些操作可能需要输入 sudo 密码"
-fi
-
-# 运行主菜单
 show_menu
