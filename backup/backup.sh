@@ -324,8 +324,8 @@ restore_from_local() {
             read -p "请选择要恢复的数据库备份 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#sql_files[@]} ]; then
                 selected="${sql_files[$((idx-1))]}"
-                read -p "确认恢复数据库？(yes/no): " confirm
-                if [ "$confirm" = "yes" ]; then
+                read -p "确认恢复数据库？(y/n): " confirm
+                if [ "$confirm" = "y" ]; then
                     restore_database_file "$selected"
                 fi
             fi
@@ -345,8 +345,8 @@ restore_from_local() {
             read -p "请选择要恢复的图片备份 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#images_files[@]} ]; then
                 selected="${images_files[$((idx-1))]}"
-                read -p "确认恢复图片文件夹？(yes/no): " confirm
-                if [ "$confirm" = "yes" ]; then
+                read -p "确认恢复图片文件夹？(y/n): " confirm
+                if [ "$confirm" = "y" ]; then
                     restore_images_file "$selected"
                 fi
             fi
@@ -366,8 +366,8 @@ restore_from_local() {
             read -p "请选择要恢复的 Tomcat webapp 备份 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#tomcat_files[@]} ]; then
                 selected="${tomcat_files[$((idx-1))]}"
-                read -p "确认恢复 Tomcat webapp 文件夹？(yes/no): " confirm
-                if [ "$confirm" = "yes" ]; then
+                read -p "确认恢复 Tomcat webapp 文件夹？(y/n): " confirm
+                if [ "$confirm" = "y" ]; then
                     restore_tomcat_file "$selected"
                 fi
             fi
@@ -376,18 +376,18 @@ restore_from_local() {
             # 恢复所有：依次执行数据库、图片、Tomcat
             if [ ${#sql_files[@]} -gt 0 ]; then
                 echo "最新数据库备份：$(basename "${sql_files[-1]}")"
-                read -p "恢复最新数据库？(yes/no): " confirm
-                [ "$confirm" = "yes" ] && restore_database_file "${sql_files[-1]}"
+                read -p "恢复最新数据库？(y/n): " confirm
+                [ "$confirm" = "y" ] && restore_database_file "${sql_files[-1]}"
             fi
             if [ ${#images_files[@]} -gt 0 ]; then
                 echo "最新图片备份：$(basename "${images_files[-1]}")"
-                read -p "恢复最新图片文件夹？(yes/no): " confirm
-                [ "$confirm" = "yes" ] && restore_images_file "${images_files[-1]}"
+                read -p "恢复最新图片文件夹？(y/n): " confirm
+                [ "$confirm" = "y" ] && restore_images_file "${images_files[-1]}"
             fi
             if [ ${#tomcat_files[@]} -gt 0 ]; then
                 echo "最新 Tomcat webapp 备份：$(basename "${tomcat_files[-1]}")"
-                read -p "恢复最新 Tomcat webapp 文件夹？(yes/no): " confirm
-                [ "$confirm" = "yes" ] && restore_tomcat_file "${tomcat_files[-1]}"
+                read -p "恢复最新 Tomcat webapp 文件夹？(y/n): " confirm
+                [ "$confirm" = "y" ] && restore_tomcat_file "${tomcat_files[-1]}"
             fi
             ;;
         *)
@@ -459,8 +459,8 @@ restore_from_cloud() {
                 info "下载 ${remote_filename} ..."
                 rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
                 if [ -f "$local_file" ]; then
-                    read -p "确认恢复数据库？(yes/no): " confirm
-                    [ "$confirm" = "yes" ] && restore_database_file "$local_file"
+                    read -p "确认恢复数据库？(y/n): " confirm
+                    [ "$confirm" = "y" ] && restore_database_file "$local_file"
                 else
                     error "下载失败"
                 fi
@@ -486,8 +486,8 @@ restore_from_cloud() {
                 info "下载 ${remote_filename} ..."
                 rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
                 if [ -f "$local_file" ]; then
-                    read -p "确认恢复图片文件夹？(yes/no): " confirm
-                    [ "$confirm" = "yes" ] && restore_images_file "$local_file"
+                    read -p "确认恢复图片文件夹？(y/n): " confirm
+                    [ "$confirm" = "y" ] && restore_images_file "$local_file"
                 else
                     error "下载失败"
                 fi
@@ -513,8 +513,8 @@ restore_from_cloud() {
                 info "下载 ${remote_filename} ..."
                 rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
                 if [ -f "$local_file" ]; then
-                    read -p "确认恢复 Tomcat webapp 文件夹？(yes/no): " confirm
-                    [ "$confirm" = "yes" ] && restore_tomcat_file "$local_file"
+                    read -p "确认恢复 Tomcat webapp 文件夹？(y/n): " confirm
+                    [ "$confirm" = "y" ] && restore_tomcat_file "$local_file"
                 else
                     error "下载失败"
                 fi
@@ -524,24 +524,24 @@ restore_from_cloud() {
             # 恢复所有：依次处理
             if [ ${#sql_remote[@]} -gt 0 ]; then
                 latest=$(echo "${sql_remote[0]}" | awk '{$1=""; print substr($0,2)}')
-                read -p "恢复最新数据库备份 ${latest} ? (yes/no): " confirm
-                if [ "$confirm" = "yes" ]; then
+                read -p "恢复最新数据库备份 ${latest} ? (y/n): " confirm
+                if [ "$confirm" = "y" ]; then
                     rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
                     restore_database_file "${temp_dir}/${latest}"
                 fi
             fi
             if [ ${#images_remote[@]} -gt 0 ]; then
                 latest=$(echo "${images_remote[0]}" | awk '{$1=""; print substr($0,2)}')
-                read -p "恢复最新图片备份 ${latest} ? (yes/no): " confirm
-                if [ "$confirm" = "yes" ]; then
+                read -p "恢复最新图片备份 ${latest} ? (y/n): " confirm
+                if [ "$confirm" = "y" ]; then
                     rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
                     restore_images_file "${temp_dir}/${latest}"
                 fi
             fi
             if [ ${#tomcat_remote[@]} -gt 0 ]; then
                 latest=$(echo "${tomcat_remote[0]}" | awk '{$1=""; print substr($0,2)}')
-                read -p "恢复最新 Tomcat webapp 备份 ${latest} ? (yes/no): " confirm
-                if [ "$confirm" = "yes" ]; then
+                read -p "恢复最新 Tomcat webapp 备份 ${latest} ? (y/n): " confirm
+                if [ "$confirm" = "y" ]; then
                     rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
                     restore_tomcat_file "${temp_dir}/${latest}"
                 fi
@@ -613,8 +613,8 @@ upload_logs() {
         return 1
     fi
 
-    read -p "是否打包并上传这些日志文件？(yes/no): " confirm
-    if [ "$confirm" != "yes" ]; then
+    read -p "是否打包并上传这些日志文件？(y/n): " confirm
+    if [ "$confirm" != "y" ]; then
         info "取消上传"
         return
     fi
@@ -660,8 +660,8 @@ upload_logs() {
     fi
 
     # 可选：删除本地压缩包
-    read -p "是否删除本地压缩包 ${archive_path}？(yes/no): " del_choice
-    if [ "$del_choice" = "yes" ]; then
+    read -p "是否删除本地压缩包 ${archive_path}？(y/n): " del_choice
+    if [ "$del_choice" = "y" ]; then
         rm -f "$archive_path"
         info "已删除本地压缩包"
     else
