@@ -6,6 +6,7 @@ MYSQL_PASSWORD='N0mur@4$99!'
 DATABASE_NAME="kpos"
 IMAGES_SOURCE_DIR="/Wisdomount/Menusifu/data/static/images"
 TOMCAT_WEBAPP_DIR="/opt/apache-tomcat-7.0.93/webapps/kpos"
+TOMCAT_LOGS_DIR="/opt/apache-tomcat-7.0.93/logs"
 BACKUP_DIR="/home/menu/backup"
 
 # Google Drive 配置
@@ -128,7 +129,7 @@ setup_rclone() {
 
 mkdir -p "$BACKUP_DIR"
 
-# ==================== 备份函数（增加交互选择） ====================
+# ==================== 备份函数 ====================
 do_backup() {
     info "开始备份流程..."
 
@@ -153,7 +154,6 @@ do_backup() {
             ${DATABASE_NAME} | gzip > ${SQL_LOCAL_PATH}
         if [ $? -eq 0 ] && [ -s ${SQL_LOCAL_PATH} ]; then
             info "数据库备份成功: ${SQL_LOCAL_PATH} ($(du -h ${SQL_LOCAL_PATH} | cut -f1))"
-            # 上传
             info "上传数据库备份到云端..."
             rclone copy "${SQL_LOCAL_PATH}" "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
             if [ $? -eq 0 ]; then
@@ -218,8 +218,6 @@ do_backup() {
         fi
     fi
 
-    # 清理本地临时备份文件（上传后自动删除，保留在 BACKUP_DIR 中的文件？原脚本未自动删除本地，这里也不删除）
-    # 注意：原脚本备份后没有删除本地文件，保留在 BACKUP_DIR。这里保持相同行为。
     info "========== 备份完成 =========="
     info "本地备份文件保存在: ${BACKUP_DIR}"
     info "云端备份文件保存在: ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
@@ -280,7 +278,6 @@ restore_images_file() {
 restore_tomcat_file() {
     local tar_file="$1"
     info "正在恢复 Tomcat webapp 文件夹到 ${TOMCAT_WEBAPP_DIR}..."
-    # 解压前先停止 Tomcat（可选，但最好提醒）
     warn "恢复 Tomcat webapp 可能需要重启 Tomcat 服务才能生效"
     sudo tar -xzvf "$tar_file" -C /
     if [ $? -eq 0 ]; then
@@ -290,7 +287,7 @@ restore_tomcat_file() {
     fi
 }
 
-# ==================== 从本地恢复（扩展选择） ====================
+# ==================== 从本地恢复 ====================
 restore_from_local() {
     info "扫描本地备份文件夹: ${BACKUP_DIR}"
 
@@ -399,7 +396,7 @@ restore_from_local() {
     esac
 }
 
-# ==================== 从 Google Drive 恢复（扩展选择） ====================
+# ==================== 从 Google Drive 恢复 ====================
 restore_from_cloud() {
     info "从 Google Drive 获取备份文件列表..."
 
@@ -559,6 +556,92 @@ restore_from_cloud() {
     rm -rf "$temp_dir"
 }
 
+# ==================== 新增：上传指定日期的日志文件 ====================
+upload_logs() {
+    info "上传 Tomcat 日志文件"
+
+    # 输入日期
+    read -p "请输入日期 (格式: 年-月-日，例如 2026-03-15): " log_date
+    if ! [[ "$log_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        error "日期格式错误，请使用 YYYY-MM-DD 格式"
+        return 1
+    fi
+
+    year=$(echo "$log_date" | cut -d'-' -f1)
+    month=$(echo "$log_date" | cut -d'-' -f2)
+    day=$(echo "$log_date" | cut -d'-' -f3)
+
+    # 构建日志目录路径
+    log_dir="${TOMCAT_LOGS_DIR}/${year}-${month}"
+    if [ ! -d "$log_dir" ]; then
+        error "日志目录不存在: $log_dir"
+        return 1
+    fi
+
+    # 查找匹配的日志文件: appserver-月-日-年-*.log
+    # 注意：月份和日可能带前导零，直接使用 $month 和 $day
+    pattern="appserver-${month}-${day}-${year}-*.log"
+    info "查找文件: $pattern"
+    
+    # 使用 find 命令查找（注意路径）
+    mapfile -t log_files < <(find "$log_dir" -maxdepth 1 -type f -name "$pattern" | sort)
+    
+    if [ ${#log_files[@]} -eq 0 ]; then
+        warn "在 $log_dir 中没有找到匹配的日志文件: $pattern"
+        return 1
+    fi
+
+    echo ""
+    info "找到 ${#log_files[@]} 个日志文件："
+    for f in "${log_files[@]}"; do
+        echo "  $(basename "$f")"
+    done
+
+    read -p "是否打包并上传这些日志文件？(yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        info "取消上传"
+        return
+    fi
+
+    # 打包压缩
+    local archive_name="logs_${year}-${month}-${day}.tar.gz"
+    local archive_path="${BACKUP_DIR}/${archive_name}"
+    info "正在打包日志文件到 ${archive_path} ..."
+    # 使用 tar 打包，注意进入目录以保持相对路径
+    pushd "$log_dir" > /dev/null
+    sudo tar -czf "$archive_path" $(basename -a "${log_files[@]}")
+    popd > /dev/null
+    if [ $? -eq 0 ] && [ -s "$archive_path" ]; then
+        info "打包成功: $archive_path ($(du -h "$archive_path" | cut -f1))"
+    else
+        error "打包失败"
+        return 1
+    fi
+
+    # 上传到 Google Drive 的 logs/年-月/ 目录
+    remote_log_dir="${RCLONE_BACKUP_DIR}/logs/${year}-${month}"
+    info "上传到 ${RCLONE_REMOTE}:${remote_log_dir}/ ..."
+    rclone mkdir "${RCLONE_REMOTE}:${remote_log_dir}/" 2>/dev/null
+    rclone copy "$archive_path" "${RCLONE_REMOTE}:${remote_log_dir}/"
+    if [ $? -eq 0 ]; then
+        info "日志文件上传成功"
+    else
+        error "上传失败"
+        return 1
+    fi
+
+    # 可选：删除本地压缩包
+    read -p "是否删除本地压缩包 ${archive_path}？(yes/no): " del_choice
+    if [ "$del_choice" = "yes" ]; then
+        rm -f "$archive_path"
+        info "已删除本地压缩包"
+    else
+        info "本地压缩包保留在: $archive_path"
+    fi
+
+    info "========== 日志上传完成 =========="
+}
+
 # ==================== 主菜单 ====================
 show_menu() {
     echo ""
@@ -570,14 +653,16 @@ show_menu() {
     echo "1) 备份（交互式选择）"
     echo "2) 恢复（从本地备份目录）"
     echo "3) 恢复（从 Google Drive 下载）"
-    echo "4) 退出"
+    echo "4) 上传指定日期的 Tomcat 日志文件"
+    echo "5) 退出"
     echo "========================================="
-    read -p "请选择 [1-4]: " choice
+    read -p "请选择 [1-5]: " choice
     case $choice in
         1) do_backup ;;
         2) restore_from_local ;;
         3) restore_from_cloud ;;
-        4) info "退出程序"; exit 0 ;;
+        4) upload_logs ;;
+        5) info "退出程序"; exit 0 ;;
         *) error "无效选择"; show_menu ;;
     esac
 }
