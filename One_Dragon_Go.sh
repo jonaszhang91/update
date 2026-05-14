@@ -54,6 +54,22 @@ do_upgrade_16_7_2_fast0() {
     exit 0
 }
 
+# 新增：升级 30.13
+do_upgrade_30_13() {
+    echo ">>> 正在执行升级 30.13 ..."
+    cd ~ || exit
+    rm -f /home/menu/POS_update.sh
+    wget --user=baol22 --password="1qaz@WSX6788" http://skymenu.menusifu.com.cn:29120/18030.13/POS_update.sh
+    sudo sh POS_update.sh
+    if [ $? -eq 0 ]; then
+        echo ">>> 升级 30.13 完成"
+    else
+        echo ">>> 升级 30.13 失败，请检查错误"
+    fi
+    echo "升级脚本已执行，脚本将退出。"
+    exit 0
+}
+
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
     cd ~ || exit
@@ -72,7 +88,6 @@ do_patch_16_6_fast18() {
     read -p "按回车键继续..."
 }
 
-# 菜单函数（与之前相同）
 show_main_menu() {
     clear
     echo "======================"
@@ -91,8 +106,9 @@ show_upgrade_menu() {
     echo "1.1 升级 16.6 fast0"
     echo "1.2 升级 16.7.1 fast0"
     echo "1.3 升级 16.7.2 fast0"
+    echo "1.4 升级 30.13"
     echo "0. 返回主菜单"
-    printf "请选择 [0-3]: "
+    printf "请选择 [0-4]: "
 }
 
 show_patch_menu() {
@@ -113,6 +129,7 @@ upgrade_menu_loop() {
             1) do_upgrade_16_6_fast0 ;;
             2) do_upgrade_16_7_1_fast0 ;;
             3) do_upgrade_16_7_2_fast0 ;;
+            4) do_upgrade_30_13 ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
