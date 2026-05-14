@@ -15,12 +15,6 @@ do_upgrade_16_6_fast0() {
     rm -f /home/menu/POS_update.sh
     wget -O /home/menu/POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.6/POS_update.sh
     sudo sh /home/menu/POS_update.sh
-    if [ $? -eq 0 ]; then
-        echo ">>> 升级 16.6 fast0 完成"
-    else
-        echo ">>> 升级 16.6 fast0 失败，请检查错误"
-    fi
-    echo "升级脚本已执行，脚本将退出。"
     exit 0
 }
 
@@ -30,12 +24,6 @@ do_upgrade_16_7_1_fast0() {
     rm -f /home/menu/POS_update.sh
     wget -O /home/menu/POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.1/POS_update.sh
     sudo sh /home/menu/POS_update.sh
-    if [ $? -eq 0 ]; then
-        echo ">>> 升级 16.7.1 fast0 完成"
-    else
-        echo ">>> 升级 16.7.1 fast0 失败，请检查错误"
-    fi
-    echo "升级脚本已执行，脚本将退出。"
     exit 0
 }
 
@@ -45,12 +33,6 @@ do_upgrade_16_7_2_fast0() {
     rm -f /home/menu/POS_update.sh
     wget -O /home/menu/POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.2/POS_update.sh
     sudo sh /home/menu/POS_update.sh
-    if [ $? -eq 0 ]; then
-        echo ">>> 升级 16.7.2 fast0 完成"
-    else
-        echo ">>> 升级 16.7.2 fast0 失败，请检查错误"
-    fi
-    echo "升级脚本已执行，脚本将退出。"
     exit 0
 }
 
@@ -61,12 +43,6 @@ do_upgrade_30_13() {
     rm -f /home/menu/POS_update.sh
     wget --user=baol22 --password="1qaz@WSX6788" http://skymenu.menusifu.com.cn:29120/18030.13/POS_update.sh
     sudo sh POS_update.sh
-    if [ $? -eq 0 ]; then
-        echo ">>> 升级 30.13 完成"
-    else
-        echo ">>> 升级 30.13 失败，请检查错误"
-    fi
-    echo "升级脚本已执行，脚本将退出。"
     exit 0
 }
 
