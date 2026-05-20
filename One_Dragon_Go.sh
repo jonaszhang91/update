@@ -49,6 +49,14 @@ do_upgrade_30_13() {
     exit 0
 }
 
+do_upgrade_30_14_9() {
+    echo ">>> 正在执行升级 30.14.9，菜单将关闭..."
+    cd /home/menu || exit
+    rm -f POS_update.sh
+    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://skymenu.menusifu.com.cn:29120/18030.14/POS_update.sh
+    exec sudo sh POS_update.sh
+}
+
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
     cd ~ || exit
@@ -86,6 +94,7 @@ show_upgrade_menu() {
     echo "1.2 升级 16.7.1 fast0"
     echo "1.3 升级 16.7.2 fast0"
     echo "1.4 升级 30.13"
+    echo "1.5 升级 30.14.9"
     echo "0. 返回主菜单"
     printf "请选择 [0-4]: "
 }
@@ -109,6 +118,7 @@ upgrade_menu_loop() {
             2) do_upgrade_16_7_1_fast0 ;;
             3) do_upgrade_16_7_2_fast0 ;;
             4) do_upgrade_30_13 ;;
+            5) do_upgrade_30_14_9 ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
