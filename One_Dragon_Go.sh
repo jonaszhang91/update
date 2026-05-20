@@ -74,6 +74,29 @@ do_patch_16_6_fast18() {
     fi
     read -p "按回车键继续..."
 }
+# 166升级167_27more 修复
+do_patch_166_to167_fix() {
+    echo ">>> 正在执行 166升级167_27more 修复（向 kpos 库写入数据）..."
+    SQL_COMMANDS="
+-- 1. 修复 schema_version 记录
+UPDATE schema_version SET success = 1 WHERE version = '1.8.0.471';
+
+-- 2. 添加 terminal 表 user_name 字段
+ALTER TABLE \`kpos\`.\`terminal\`
+ADD COLUMN \`user_name\` varchar(128) NULL COMMENT 'worldline username' AFTER \`tablet_version\`;
+
+-- 3. 添加 pat_config 表 enabled 字段
+ALTER TABLE \`kpos\`.\`pat_config\`
+ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- not' AFTER \`login_status\`;
+"
+    echo "$SQL_COMMANDS" | mysql -u root --password='N0mur@4$99!' kpos 2>&1
+    if [ $? -eq 0 ]; then
+        echo ">>> 166升级167_27more 修复完成"
+    else
+        echo ">>> 修复过程中出现部分错误（如字段已存在），请检查上方输出。"
+    fi
+    read -p "按回车键继续..."
+}
 
 show_main_menu() {
     clear
@@ -105,6 +128,7 @@ show_patch_menu() {
     echo "    打补丁子菜单"
     echo "======================"
     echo "2.1 16.6 fast18 补丁"
+    echo "2.2 166升级167_27more修复"
     echo "0. 返回主菜单"
     printf "请选择 [0-1]: "
 }
@@ -131,6 +155,7 @@ patch_menu_loop() {
         read sub_choice
         case $sub_choice in
             1) do_patch_16_6_fast18 ;;
+            2) do_patch_166_to167_fix ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
