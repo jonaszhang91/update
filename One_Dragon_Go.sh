@@ -90,8 +90,11 @@ ALTER TABLE \`kpos\`.\`pat_config\`
 ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- not' AFTER \`login_status\`;
 "
     echo "$SQL_COMMANDS" | mysql -u root --password='N0mur@4$99!' kpos 2>&1
+    
     if [ $? -eq 0 ]; then
         echo ">>> 166升级167_27more 修复完成"
+        echo ">>> 正在重启 tomcat 服务..."
+        sudo service tomcat restart
     else
         echo ">>> 修复过程中出现部分错误（如字段已存在），请检查上方输出。"
     fi
