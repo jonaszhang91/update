@@ -24,7 +24,7 @@ do_upgrade_16_7_1_fast0() {
     cd ~ || exit
     rm -f /home/menu/POS_update.sh
     wget -O /home/menu/POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.1/POS_update.sh
-    sudo sh /home/menu/POS_update.sh 
+    exec sudo sh /home/menu/POS_update.sh
     echo "升级已在后台启动，当前菜单脚本关闭。"
     exit 0
 }
