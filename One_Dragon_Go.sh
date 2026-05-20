@@ -14,7 +14,7 @@ do_upgrade_16_6_fast0() {
     cd ~ || exit
     rm -f /home/menu/POS_update.sh
     wget -O /home/menu/POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.6/POS_update.sh
-    sudo sh /home/menu/POS_update.sh 
+    exec sudo sh /home/menu/POS_update.sh
     echo "升级已在后台启动，当前菜单脚本关闭。"
     exit 0
 }
@@ -34,7 +34,7 @@ do_upgrade_16_7_2_fast0() {
     cd ~ || exit
     rm -f /home/menu/POS_update.sh
     wget -O /home/menu/POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.2/POS_update.sh
-    sudo sh /home/menu/POS_update.sh 
+    exec sudo sh /home/menu/POS_update.sh
     echo "升级已在后台启动，当前菜单脚本关闭。"
     exit 0
 }
@@ -43,8 +43,8 @@ do_upgrade_30_13() {
     echo ">>> 正在启动升级 30.13（后台运行）..."
     cd ~ || exit
     rm -f /home/menu/POS_update.sh
-    wget --user=baol22 --password="1qaz@WSX6788" http://menusifu.com.cn:29120/18030.13/POS_update.sh
-    sudo sh POS_update.sh 
+    wget --user=baol22 --password="1qaz@WSX6788" http://skymenu.menusifu.com.cn:29120/18030.13/POS_update.sh
+    exec sudo sh /home/menu/POS_update.sh
     echo "升级已在后台启动，当前菜单脚本关闭。"
     exit 0
 }
