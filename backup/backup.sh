@@ -10,10 +10,10 @@ TOMCAT_LOGS_DIR="/opt/apache-tomcat-7.0.93/logs"
 BACKUP_DIR="/home/menu/backup"
 
 # Google Drive 配置
-RCLONE_REMOTE="gdrive"          # rclone 配置的 remote 名称
-RCLONE_BACKUP_DIR="backup"      # 云端备份文件夹（根目录）
-RCLONE_CONFIG_FILE="./rclone.conf"   # 配置文件位于脚本当前目录
-RCLONE_CONFIG_PASS="262410ZXj."      # rclone 配置文件解密密码
+RCLONE_REMOTE="gdrive"
+RCLONE_BACKUP_DIR="backup"
+RCLONE_CONFIG_FILE="./rclone.conf"
+RCLONE_CONFIG_PASS="262410ZXj."
 
 # 互斥锁文件
 LOCK_FILE="/tmp/kpos_backup.lock"
@@ -133,7 +133,6 @@ mkdir -p "$BACKUP_DIR"
 do_backup() {
     info "开始备份流程..."
 
-    # 询问备份哪些内容
     echo ""
     read -p "是否备份数据库？(y/n，默认 y): " backup_db
     backup_db=${backup_db:-y}
@@ -144,7 +143,6 @@ do_backup() {
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)_$$
 
-    # 备份数据库
     if [[ "$backup_db" == "y" || "$backup_db" == "Y" ]]; then
         SQL_FILE="${DATABASE_NAME}_${TIMESTAMP}.sql.gz"
         SQL_LOCAL_PATH="${BACKUP_DIR}/${SQL_FILE}"
@@ -168,7 +166,6 @@ do_backup() {
         fi
     fi
 
-    # 备份图片文件夹
     if [[ "$backup_images" == "y" || "$backup_images" == "Y" ]]; then
         if [ ! -d "${IMAGES_SOURCE_DIR}" ]; then
             warn "图片文件夹 ${IMAGES_SOURCE_DIR} 不存在，跳过备份"
@@ -193,7 +190,6 @@ do_backup() {
         fi
     fi
 
-    # 备份 Tomcat webapp 文件夹
     if [[ "$backup_tomcat" == "y" || "$backup_tomcat" == "Y" ]]; then
         if [ ! -d "${TOMCAT_WEBAPP_DIR}" ]; then
             warn "Tomcat webapp 文件夹 ${TOMCAT_WEBAPP_DIR} 不存在，跳过备份"
@@ -291,14 +287,10 @@ restore_tomcat_file() {
 restore_from_local() {
     info "扫描本地备份文件夹: ${BACKUP_DIR}"
 
-    # 列出数据库备份
     mapfile -t sql_files < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name "*.sql.gz" 2>/dev/null | sort)
-    # 列出图片备份
     mapfile -t images_files < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name "images_*.tar.gz" 2>/dev/null | sort)
-    # 列出 Tomcat webapp 备份
     mapfile -t tomcat_files < <(find "$BACKUP_DIR" -maxdepth 1 -type f -name "kpos_webapp_*.tar.gz" 2>/dev/null | sort)
 
-    # 选择要恢复的内容类型
     echo ""
     warn "========== 选择要恢复的内容类型 =========="
     echo "1) 恢复数据库"
@@ -373,7 +365,6 @@ restore_from_local() {
             fi
             ;;
         4)
-            # 恢复所有：依次执行数据库、图片、Tomcat
             if [ ${#sql_files[@]} -gt 0 ]; then
                 echo "最新数据库备份：$(basename "${sql_files[-1]}")"
                 read -p "恢复最新数据库？(y/n): " confirm
@@ -400,7 +391,6 @@ restore_from_local() {
 restore_from_cloud() {
     info "从 Google Drive 获取备份文件列表..."
 
-    # 获取云端文件列表
     local remote_files=()
     while IFS= read -r line; do
         remote_files+=("$line")
@@ -411,7 +401,6 @@ restore_from_cloud() {
         return 1
     fi
 
-    # 按类型分类
     local sql_remote=()
     local images_remote=()
     local tomcat_remote=()
@@ -521,7 +510,6 @@ restore_from_cloud() {
             fi
             ;;
         4)
-            # 恢复所有：依次处理
             if [ ${#sql_remote[@]} -gt 0 ]; then
                 latest=$(echo "${sql_remote[0]}" | awk '{$1=""; print substr($0,2)}')
                 read -p "恢复最新数据库备份 ${latest} ? (y/n): " confirm
@@ -552,15 +540,13 @@ restore_from_cloud() {
             ;;
     esac
 
-    # 清理临时目录
     rm -rf "$temp_dir"
 }
 
-# ==================== 上传指定日期的日志文件（可选择是否包含 appserver.log） ====================
+# ==================== 上传指定日期的日志文件 ====================
 upload_logs() {
     info "上传 Tomcat 日志文件"
 
-    # 输入日期
     read -p "请输入日期 (格式: 年-月-日，例如 2026-03-15): " log_date
     if ! [[ "$log_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
         error "日期格式错误，请使用 YYYY-MM-DD 格式"
@@ -571,14 +557,12 @@ upload_logs() {
     month=$(echo "$log_date" | cut -d'-' -f2)
     day=$(echo "$log_date" | cut -d'-' -f3)
 
-    # 构建日志目录路径
     log_dir="${TOMCAT_LOGS_DIR}/${year}-${month}"
     if [ ! -d "$log_dir" ]; then
         error "日志目录不存在: $log_dir"
         return 1
     fi
 
-    # 查找匹配的日志文件: appserver-月-日-年-*.log
     pattern="appserver-${month}-${day}-${year}-*.log"
     info "查找文件: $pattern"
     
@@ -594,7 +578,6 @@ upload_logs() {
         done
     fi
 
-    # 询问是否包含根目录下的 appserver.log
     include_appserver="n"
     if [ -f "${TOMCAT_LOGS_DIR}/appserver.log" ]; then
         read -p "是否同时包含当前的 appserver.log 文件？(y/n，默认 n): " include_appserver
@@ -619,11 +602,9 @@ upload_logs() {
         return
     fi
 
-    # 创建临时目录用于打包
     local temp_work_dir="/tmp/kpos_logs_$$"
     mkdir -p "$temp_work_dir"
 
-    # 复制或链接日志文件到临时目录
     for f in "${log_files[@]}"; do
         cp "$f" "$temp_work_dir/"
     done
@@ -631,7 +612,6 @@ upload_logs() {
         cp "${TOMCAT_LOGS_DIR}/appserver.log" "$temp_work_dir/"
     fi
 
-    # 打包压缩
     local archive_name="logs_${year}-${month}-${day}.tar.gz"
     local archive_path="${BACKUP_DIR}/${archive_name}"
     info "正在打包日志文件到 ${archive_path} ..."
@@ -646,10 +626,8 @@ upload_logs() {
         return 1
     fi
 
-    # 清理临时目录
     rm -rf "$temp_work_dir"
 
-    # 上传到 Google Drive 的 backup 根目录
     info "上传到 ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/ ..."
     rclone copy "$archive_path" "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
     if [ $? -eq 0 ]; then
@@ -659,7 +637,6 @@ upload_logs() {
         return 1
     fi
 
-    # 可选：删除本地压缩包
     read -p "是否删除本地压缩包 ${archive_path}？(y/n): " del_choice
     if [ "$del_choice" = "y" ]; then
         rm -f "$archive_path"
@@ -669,6 +646,21 @@ upload_logs() {
     fi
 
     info "========== 日志上传完成 =========="
+}
+
+# ==================== 新增：升级工具脚本 ====================
+upgrade_script() {
+    info "开始升级工具脚本 (One_Dragon_Go.sh)..."
+    cd ~ || { error "无法切换到 home 目录"; return 1; }
+    rm -f /home/menu/One_Dragon_Go.sh
+    info "下载 One_Dragon_Go.sh ..."
+    wget https://github.com/jonaszhang91/update/raw/refs/heads/main/One_Dragon_Go.sh
+    check_success "下载 One_Dragon_Go.sh"
+    info "执行升级脚本..."
+    sudo bash /home/menu/One_Dragon_Go.sh
+    check_success "执行升级脚本"
+    info "升级工具脚本完成"
+    read -p "按回车返回主菜单..."
 }
 
 # ==================== 主菜单 ====================
@@ -683,15 +675,17 @@ show_menu() {
     echo "2) 恢复（从本地备份目录）"
     echo "3) 恢复（从 Google Drive 下载）"
     echo "4) 上传指定日期的 Tomcat 日志文件"
-    echo "5) 退出"
+    echo "5) 升级工具脚本"
+    echo "0) 退出"
     echo "========================================="
-    read -p "请选择 [1-5]: " choice
+    read -p "请选择 [0-5]: " choice
     case $choice in
         1) do_backup ;;
         2) restore_from_local ;;
         3) restore_from_cloud ;;
         4) upload_logs ;;
-        5) info "退出程序"; exit 0 ;;
+        5) upgrade_script ;;
+        0) info "退出程序"; exit 0 ;;
         *) error "无效选择"; show_menu ;;
     esac
 }
