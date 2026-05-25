@@ -12,22 +12,29 @@ check_dependencies() {
 
 # ======================== 获取所有IPv4地址（含DHCP/虚拟标识） ========================
 show_network_ips() {
-    if ip -o -4 addr show > /dev/null 2>&1; then
-        ip -o -4 addr show | grep -v LOOPBACK | grep -v "127.0.0.1" | while read line; do
+    # 使用 -d 显示动态标志
+    if ip -d -o -4 addr show > /dev/null 2>&1; then
+        ip -d -o -4 addr show | grep -v LOOPBACK | grep -v "127.0.0.1" | while read line; do
             iface=$(echo "$line" | awk '{print $2}')
             ip_addr=$(echo "$line" | awk '{print $4}' | cut -d'/' -f1)
-            case "$iface" in
-                docker*|veth*|br-*|virbr*|lxc*|vnet*|tun*|tap*|lo*)
-                    type="虚拟IP"
-                    ;;
-                *)
-                    type="DHCP IP"
-                    ;;
-            esac
+            # 检查是否有 dynamic 标志
+            if echo "$line" | grep -q 'dynamic'; then
+                type="DHCP IP"
+            else
+                # 根据接口名判断是否为虚拟接口
+                case "$iface" in
+                    docker*|veth*|br-*|virbr*|lxc*|vnet*|tun*|tap*|tunnel*|wg*|ovs*)
+                        type="虚拟IP"
+                        ;;
+                    *)
+                        type="静态IP"
+                        ;;
+                esac
+            fi
             echo "  $iface: $ip_addr ($type)"
         done
     else
-        # 降级 ifconfig
+        # 降级 ifconfig（无 dynamic 信息，只能按接口名判断）
         ifconfig | grep -E 'inet ' | grep -v '127.0.0.1' | while read line; do
             ip_addr=$(echo "$line" | awk '{print $2}')
             iface=$(echo "$line" | awk '{print $1}')
@@ -36,13 +43,14 @@ show_network_ips() {
                     type="虚拟IP"
                     ;;
                 *)
-                    type="DHCP IP"
+                    type="静态IP"
                     ;;
             esac
             echo "  $iface: $ip_addr ($type)"
         done
     fi
 }
+
 
 # ======================== 添加网段功能 ========================
 add_network_segment() {
