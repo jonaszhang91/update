@@ -490,6 +490,17 @@ show_main_menu() {
     echo "网络IP列表："
     show_network_ips
     echo "======================"
+    # 获取 CPU 型号（取第一个物理CPU的型号）
+    cpu_model=$(lscpu | grep "Model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
+    if [ -z "$cpu_model" ]; then
+        cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
+    fi
+    # 获取内存总大小（GB/MB格式）
+    mem_total=$(free -h | grep Mem | awk '{print $2}')
+    echo "硬件信息："
+    echo "  CPU: $cpu_model"
+    echo "  内存: $mem_total"
+    echo "======================"
     echo "1. 升级"
     echo "2. 打补丁"
     echo "3. 网络设置"
