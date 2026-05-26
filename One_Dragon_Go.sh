@@ -57,16 +57,15 @@ add_network_segment() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
     BACKUP_FILE="/etc/netplan/50-cloud-init.yaml.bak"
     
-    echo ">>> 开始配置网段（静态IP）"
+    echo ">>> 开始配置网段（追加静态IP）"
     
-    # 检测并安装 netplan（通常已安装）
     if ! command -v netplan > /dev/null 2>&1; then
         echo "错误：netplan 未安装，请先安装：sudo apt install netplan.io"
         read -p "按回车键继续..."
         return 1
     fi
     
-    # 确定网卡名称（取第一个非lo的物理网卡）
+    # 确定网卡名称
     INTERFACE=$(ip link show | grep -v lo | grep -E '^[0-9]+: en|eth' | head -n1 | awk -F': ' '{print $2}')
     if [ -z "$INTERFACE" ]; then
         echo "未找到物理网卡，请手动指定。"
@@ -74,7 +73,7 @@ add_network_segment() {
     fi
     echo "使用的网卡: $INTERFACE"
     
-    # 提示用户输入要添加的 IP/CIDR
+    # 输入新 IP
     echo "请输入要添加的静态 IP 地址及掩码（格式如 192.168.1.199/24）"
     read -p "IP地址: " NEW_IP
     if [ -z "$NEW_IP" ]; then
@@ -89,45 +88,68 @@ add_network_segment() {
         echo "已备份原配置到 $BACKUP_FILE"
     fi
     
-    # 处理 yaml 文件（使用 sed 修改，注意缩进均为2空格）
+    # 处理文件内容
     if [ -f "$NETPLAN_FILE" ]; then
-        # 检查是否已存在 addresses 行
-        if grep -q "addresses:" "$NETPLAN_FILE"; then
-            # 存在 addresses 行，提取现有 IP 列表（支持多行 - 格式或单行 [] 格式）
-            # 简化处理：将 addresses 所在行的内容替换为新的列表格式（保留原有 IP + 新增 IP）
-            # 先获取该行内容
-            ADDR_LINE=$(grep -E "^\s+addresses:" "$NETPLAN_FILE" | head -n1)
-            # 提取现有 IP（简单正则，不处理多行）
-            EXISTING_IPS=$(echo "$ADDR_LINE" | sed -n 's/.*addresses:\s*\[\(.*\)\].*/\1/p')
-            if [ -n "$EXISTING_IPS" ]; then
-                # 格式为 [ip1, ip2]
-                NEW_LIST="[$EXISTING_IPS, $NEW_IP]"
-                # 替换整行
-                sudo sed -i "s/^\s\+addresses:.*/    addresses: $NEW_LIST/" "$NETPLAN_FILE"
+        # 检查该网卡下是否已有 addresses 配置
+        # 提取从网卡定义开始到下一个网卡或 version 之前的块
+        # 简单做法：使用 Python 风格的 yaml 处理较复杂，这里用 awk/sed 进行追加
+        
+        # 先判断是否存在 addresses 行（在该网卡缩进级别下）
+        # 获取该网卡块的行范围（从 "网卡名:" 到下一个 "  [a-z]" 或 "version:"）
+        START_LINE=$(grep -n "^\s*$INTERFACE:" "$NETPLAN_FILE" | cut -d: -f1)
+        if [ -n "$START_LINE" ]; then
+            # 找到 addresses: 所在行号
+            ADDR_LINE=$(sed -n "${START_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "addresses:" | head -n1 | cut -d: -f1)
+            if [ -n "$ADDR_LINE" ]; then
+                # 获取绝对行号
+                ABS_ADDR_LINE=$((START_LINE + ADDR_LINE - 1))
+                # 检查是单行列表还是多行列表
+                # 取 addresses: 后面的内容，去除首尾空格
+                ADDR_CONTENT=$(sed -n "${ABS_ADDR_LINE}p" "$NETPLAN_FILE" | sed 's/.*addresses:\s*//')
+                if echo "$ADDR_CONTENT" | grep -q '^\[.*\]$'; then
+                    # 单行列表 [ip1, ip2]
+                    EXISTING_IPS=$(echo "$ADDR_CONTENT" | sed 's/\[\(.*\)\]/\1/' | sed 's/ //g')
+                    if [ -n "$EXISTING_IPS" ]; then
+                        NEW_LIST="[$EXISTING_IPS, $NEW_IP]"
+                    else
+                        NEW_LIST="[$NEW_IP]"
+                    fi
+                    # 替换该行
+                    sudo sed -i "${ABS_ADDR_LINE}s/.*/    addresses: $NEW_LIST/" "$NETPLAN_FILE"
+                else
+                    # 多行列表（- ip1 格式）或在同一行但无方括号，视为多行格式
+                    # 在该 addresses: 行之后查找以 "    - " 开头的行，在末尾追加新项
+                    # 获取该块结束行（下一个缩进小于当前的行，或文件尾）
+                    # 简便方法：在 addresses: 行后直接插入一行 "- $NEW_IP"
+                    # 为了避免重复插入，需确定是否已存在相同 IP，这里不做去重
+                    # 查找最后一条 "- " 行，在其后插入
+                    LAST_ITEM_LINE=$(sed -n "${ABS_ADDR_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "    - " | tail -n1 | cut -d: -f1)
+                    if [ -n "$LAST_ITEM_LINE" ]; then
+                        ABS_LAST_LINE=$((START_LINE + LAST_ITEM_LINE - 1))
+                        sudo sed -i "${ABS_LAST_LINE}a\    - $NEW_IP" "$NETPLAN_FILE"
+                    else
+                        # 没有现有条目，在 addresses: 行后直接添加
+                        sudo sed -i "${ABS_ADDR_LINE}a\    - $NEW_IP" "$NETPLAN_FILE"
+                    fi
+                fi
             else
-                # 可能是多行列表（每行一个 - ip），或者没有 addresses
-                # 简单处理：若找不到单行，则在缩进位置添加新的 addresses 行（保留原有）
-                # 为避免复杂，我们直接覆盖整个文件，使用标准模板
-                echo "检测到现有配置为多行 addresses 格式，将重建配置。"
-                sudo cp "$NETPLAN_FILE" "$BACKUP_FILE"
-                # 重建文件内容
-                sudo bash -c "cat > $NETPLAN_FILE <<EOF
-network:
-  ethernets:
-    $INTERFACE:
-      dhcp4: true
-      addresses:
-        - $NEW_IP
-  version: 2
-EOF"
+                # 该网卡下没有 addresses 字段，添加
+                # 找到网卡块内合适位置（通常在 dhcp4: true 之后）
+                DHCP_LINE=$(sed -n "${START_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "dhcp4:" | head -n1 | cut -d: -f1)
+                if [ -n "$DHCP_LINE" ]; then
+                    ABS_DHCP_LINE=$((START_LINE + DHCP_LINE - 1))
+                    sudo sed -i "${ABS_DHCP_LINE}a\      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
+                else
+                    # 没有 dhcp4，直接在网卡名称行后添加
+                    sudo sed -i "${START_LINE}a\      dhcp4: true\n      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
+                fi
             fi
         else
-            # 不存在 addresses，添加
-            sudo sed -i "/dhcp4: true/a\      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
+            # 网卡不存在于配置文件中，追加整个网卡配置
+            sudo sed -i "/^network:/a\  ethernets:\n    $INTERFACE:\n      dhcp4: true\n      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
         fi
     else
         # 文件不存在，创建新文件
-        echo "配置文件不存在，正在创建..."
         sudo mkdir -p /etc/netplan
         sudo bash -c "cat > $NETPLAN_FILE <<EOF
 network:
@@ -141,7 +163,7 @@ EOF"
         echo "已创建配置文件: $NETPLAN_FILE"
     fi
     
-    # 验证并应用配置
+    # 验证并应用
     echo "正在验证配置..."
     if sudo netplan try --timeout 10; then
         echo "配置应用成功。"
