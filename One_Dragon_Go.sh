@@ -179,7 +179,33 @@ EOF"
     fi
     read -p "按回车键继续..."
 }
-
+reset_network() {
+    NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
+    echo ">>> 即将重置网络：删除 $NETPLAN_FILE 并应用 netplan 默认配置（DHCP）"
+    read -p "确定要执行吗？(y/n): " confirm
+    if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+        echo "操作已取消。"
+        read -p "按回车键继续..."
+        return 0
+    fi
+    
+    if [ -f "$NETPLAN_FILE" ]; then
+        sudo rm -f "$NETPLAN_FILE"
+        echo "已删除配置文件 $NETPLAN_FILE"
+    else
+        echo "配置文件不存在，无需删除。"
+    fi
+    
+    echo "正在应用 netplan 配置..."
+    if sudo netplan apply; then
+        echo "网络已重置，系统将自动通过 DHCP 获取 IP。"
+        echo "新的 IP 信息如下："
+        ip -4 addr show | grep inet | grep -v 127.0.0.1
+    else
+        echo "netplan apply 失败，请检查系统网络服务。"
+    fi
+    read -p "按回车键继续..."
+}
 # ======================== 升级函数（所有升级都会切换到 /home/menu 并使用 exec 替换进程） ========================
 do_upgrade_16_6_fast0() {
     echo ">>> 正在执行升级 16.6 fast0，菜单将关闭..."
@@ -276,8 +302,7 @@ show_main_menu() {
     echo "======================"
     echo "1. 升级"
     echo "2. 打补丁"
-    echo "3. 添加网段（静态IP）"
-    echo "======================"
+    echo "3. 网络设置"
     echo "0. 退出"
     printf "请选择 [0-3]: "
 }
@@ -306,6 +331,17 @@ show_patch_menu() {
     printf "请选择 [0-2]: "
 }
 
+show_network_menu() {
+    clear
+    echo "======================"
+    echo "    网络设置子菜单"
+    echo "======================"
+    echo "3.1 添加静态IP（追加模式）"
+    echo "3.2 重置网络（恢复DHCP）"
+    echo "0. 返回主菜单"
+    printf "请选择 [0-2]: "
+}
+
 # ======================== 菜单循环 ========================
 upgrade_menu_loop() {
     while true; do
@@ -330,6 +366,18 @@ patch_menu_loop() {
         case $sub_choice in
             1) do_patch_16_6_fast18 ;;
             2) do_patch_166_to167_fix ;;
+            0) echo "返回主菜单..."; sleep 1; break ;;
+            *) echo "无效输入，请重新选择！"; sleep 1 ;;
+        esac
+    done
+}
+network_menu_loop() {
+    while true; do
+        show_network_menu
+        read sub_choice
+        case $sub_choice in
+            1) add_network_segment ;;
+            2) reset_network ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
