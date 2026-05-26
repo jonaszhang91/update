@@ -277,6 +277,7 @@ show_main_menu() {
     echo "1. 升级"
     echo "2. 打补丁"
     echo "3. 添加网段（静态IP）"
+    echo "======================"
     echo "0. 退出"
     printf "请选择 [0-3]: "
 }
