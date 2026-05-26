@@ -49,18 +49,26 @@ show_network_ips() {
 
 # ======================== 获取可用网段列表（基于现有IP）返回格式：网段\n网段... ========================
 get_network_segments() {
-    # 使用 ip 命令获取所有非虚拟接口的 IP/CIDR，转换为网段格式（x.x.x.0/掩码）
-    ip -o -4 addr show | grep -v LOOPBACK | grep -v docker | grep -v veth | grep -v br- | while read line; do
-        cidr=$(echo "$line" | awk '{print $4}')   # 例如 192.168.1.100/24
+    ip -o -4 addr show | while read line; do
+        iface=$(echo "$line" | awk '{print $2}')
+        # 跳过回环和虚拟接口
+        case "$iface" in
+            lo|docker*|veth*|br-*|virbr*|lxc*|vnet*|tun*|tap*|tunnel*|wg*|ovs*)
+                continue
+                ;;
+        esac
+        cidr=$(echo "$line" | awk '{print $4}')
         if [ -n "$cidr" ]; then
-            # 提取 IP 和掩码位数
             ip_part=$(echo "$cidr" | cut -d'/' -f1)
             mask=$(echo "$cidr" | cut -d'/' -f2)
-            # 将 IP 的最后一节替换为 0 得到网络地址
+            # 跳过回环地址段 127.x.x.x
+            case "$ip_part" in
+                127.*) continue ;;
+            esac
             network=$(echo "$ip_part" | sed 's/\.[0-9]*$/.0/')
             echo "${network}/${mask}"
         fi
-    done | sort -u  # 去重
+    done | sort -u
 }
 
 # ======================== 扫描指定端口 ========================
@@ -92,7 +100,6 @@ scan_port_on_network() {
         echo "未自动检测到有效网段。"
         read -p "请手动输入要扫描的网段（如 192.168.1.0/24）: " target
     else
-        # 使用数组存储（通过临时文件）
         tmp_file="/tmp/net_segments_$$"
         echo "$segments" > "$tmp_file"
         seg_count=$(wc -l < "$tmp_file")
@@ -115,18 +122,20 @@ scan_port_on_network() {
     fi
     
     echo "正在扫描 $target 的 $description (端口 $port) ..."
-    result=$(sudo nmap -p $port --open -Pn -T4 "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
+    # -n 禁止 DNS 解析，直接显示 IP
+    result=$(sudo nmap -p $port --open -Pn -T4 -n "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
     if [ -z "$result" ]; then
         echo "未发现开放端口 $port 的设备。"
     else
         echo "发现以下设备开放 $description 端口 $port："
+        i=1
         echo "$result" | while read ip; do
-            echo "  $ip"
+            echo "  $i) $ip"
+            i=$((i+1))
         done
     fi
     read -p "按回车键继续..."
 }
-
 # ======================== 添加静态IP（追加模式） ========================
 add_network_segment() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
