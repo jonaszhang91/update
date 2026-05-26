@@ -10,18 +10,15 @@ check_dependencies() {
     done
 }
 
-# ======================== 获取所有IPv4地址（含DHCP/虚拟标识） ========================
+# ======================== 获取所有IPv4地址（正确识别 DHCP / 静态 / 虚拟） ========================
 show_network_ips() {
-    # 使用 -d 显示动态标志
     if ip -d -o -4 addr show > /dev/null 2>&1; then
         ip -d -o -4 addr show | grep -v LOOPBACK | grep -v "127.0.0.1" | while read line; do
             iface=$(echo "$line" | awk '{print $2}')
             ip_addr=$(echo "$line" | awk '{print $4}' | cut -d'/' -f1)
-            # 检查是否有 dynamic 标志
             if echo "$line" | grep -q 'dynamic'; then
                 type="DHCP IP"
             else
-                # 根据接口名判断是否为虚拟接口
                 case "$iface" in
                     docker*|veth*|br-*|virbr*|lxc*|vnet*|tun*|tap*|tunnel*|wg*|ovs*)
                         type="虚拟IP"
@@ -34,7 +31,6 @@ show_network_ips() {
             echo "  $iface: $ip_addr ($type)"
         done
     else
-        # 降级 ifconfig（无 dynamic 信息，只能按接口名判断）
         ifconfig | grep -E 'inet ' | grep -v '127.0.0.1' | while read line; do
             ip_addr=$(echo "$line" | awk '{print $2}')
             iface=$(echo "$line" | awk '{print $1}')
@@ -51,8 +47,7 @@ show_network_ips() {
     fi
 }
 
-
-# ======================== 添加网段功能 ========================
+# ======================== 添加静态IP（追加模式） ========================
 add_network_segment() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
     BACKUP_FILE="/etc/netplan/50-cloud-init.yaml.bak"
@@ -65,7 +60,6 @@ add_network_segment() {
         return 1
     fi
     
-    # 确定网卡名称
     INTERFACE=$(ip link show | grep -v lo | grep -E '^[0-9]+: en|eth' | head -n1 | awk -F': ' '{print $2}')
     if [ -z "$INTERFACE" ]; then
         echo "未找到物理网卡，请手动指定。"
@@ -73,7 +67,6 @@ add_network_segment() {
     fi
     echo "使用的网卡: $INTERFACE"
     
-    # 输入新 IP
     echo "请输入要添加的静态 IP 地址及掩码（格式如 192.168.1.199/24）"
     read -p "IP地址: " NEW_IP
     if [ -z "$NEW_IP" ]; then
@@ -82,74 +75,48 @@ add_network_segment() {
         return 0
     fi
     
-    # 备份原文件
     if [ -f "$NETPLAN_FILE" ]; then
         sudo cp "$NETPLAN_FILE" "$BACKUP_FILE"
         echo "已备份原配置到 $BACKUP_FILE"
     fi
     
-    # 处理文件内容
     if [ -f "$NETPLAN_FILE" ]; then
-        # 检查该网卡下是否已有 addresses 配置
-        # 提取从网卡定义开始到下一个网卡或 version 之前的块
-        # 简单做法：使用 Python 风格的 yaml 处理较复杂，这里用 awk/sed 进行追加
-        
-        # 先判断是否存在 addresses 行（在该网卡缩进级别下）
-        # 获取该网卡块的行范围（从 "网卡名:" 到下一个 "  [a-z]" 或 "version:"）
         START_LINE=$(grep -n "^\s*$INTERFACE:" "$NETPLAN_FILE" | cut -d: -f1)
         if [ -n "$START_LINE" ]; then
-            # 找到 addresses: 所在行号
             ADDR_LINE=$(sed -n "${START_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "addresses:" | head -n1 | cut -d: -f1)
             if [ -n "$ADDR_LINE" ]; then
-                # 获取绝对行号
                 ABS_ADDR_LINE=$((START_LINE + ADDR_LINE - 1))
-                # 检查是单行列表还是多行列表
-                # 取 addresses: 后面的内容，去除首尾空格
                 ADDR_CONTENT=$(sed -n "${ABS_ADDR_LINE}p" "$NETPLAN_FILE" | sed 's/.*addresses:\s*//')
                 if echo "$ADDR_CONTENT" | grep -q '^\[.*\]$'; then
-                    # 单行列表 [ip1, ip2]
                     EXISTING_IPS=$(echo "$ADDR_CONTENT" | sed 's/\[\(.*\)\]/\1/' | sed 's/ //g')
                     if [ -n "$EXISTING_IPS" ]; then
                         NEW_LIST="[$EXISTING_IPS, $NEW_IP]"
                     else
                         NEW_LIST="[$NEW_IP]"
                     fi
-                    # 替换该行
                     sudo sed -i "${ABS_ADDR_LINE}s/.*/    addresses: $NEW_LIST/" "$NETPLAN_FILE"
                 else
-                    # 多行列表（- ip1 格式）或在同一行但无方括号，视为多行格式
-                    # 在该 addresses: 行之后查找以 "    - " 开头的行，在末尾追加新项
-                    # 获取该块结束行（下一个缩进小于当前的行，或文件尾）
-                    # 简便方法：在 addresses: 行后直接插入一行 "- $NEW_IP"
-                    # 为了避免重复插入，需确定是否已存在相同 IP，这里不做去重
-                    # 查找最后一条 "- " 行，在其后插入
                     LAST_ITEM_LINE=$(sed -n "${ABS_ADDR_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "    - " | tail -n1 | cut -d: -f1)
                     if [ -n "$LAST_ITEM_LINE" ]; then
                         ABS_LAST_LINE=$((START_LINE + LAST_ITEM_LINE - 1))
                         sudo sed -i "${ABS_LAST_LINE}a\    - $NEW_IP" "$NETPLAN_FILE"
                     else
-                        # 没有现有条目，在 addresses: 行后直接添加
                         sudo sed -i "${ABS_ADDR_LINE}a\    - $NEW_IP" "$NETPLAN_FILE"
                     fi
                 fi
             else
-                # 该网卡下没有 addresses 字段，添加
-                # 找到网卡块内合适位置（通常在 dhcp4: true 之后）
                 DHCP_LINE=$(sed -n "${START_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "dhcp4:" | head -n1 | cut -d: -f1)
                 if [ -n "$DHCP_LINE" ]; then
                     ABS_DHCP_LINE=$((START_LINE + DHCP_LINE - 1))
                     sudo sed -i "${ABS_DHCP_LINE}a\      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
                 else
-                    # 没有 dhcp4，直接在网卡名称行后添加
                     sudo sed -i "${START_LINE}a\      dhcp4: true\n      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
                 fi
             fi
         else
-            # 网卡不存在于配置文件中，追加整个网卡配置
             sudo sed -i "/^network:/a\  ethernets:\n    $INTERFACE:\n      dhcp4: true\n      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
         fi
     else
-        # 文件不存在，创建新文件
         sudo mkdir -p /etc/netplan
         sudo bash -c "cat > $NETPLAN_FILE <<EOF
 network:
@@ -163,7 +130,6 @@ EOF"
         echo "已创建配置文件: $NETPLAN_FILE"
     fi
     
-    # 验证并应用
     echo "正在验证配置..."
     if sudo netplan try --timeout 10; then
         echo "配置应用成功。"
@@ -179,6 +145,8 @@ EOF"
     fi
     read -p "按回车键继续..."
 }
+
+# ======================== 重置网络（删除50文件并恢复DHCP） ========================
 reset_network() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
     echo ">>> 即将重置网络：删除 $NETPLAN_FILE 并应用 netplan 默认配置（DHCP）"
@@ -206,7 +174,8 @@ reset_network() {
     fi
     read -p "按回车键继续..."
 }
-# ======================== 升级函数（所有升级都会切换到 /home/menu 并使用 exec 替换进程） ========================
+
+# ======================== 升级函数 ========================
 do_upgrade_16_6_fast0() {
     echo ">>> 正在执行升级 16.6 fast0，菜单将关闭..."
     cd /home/menu || exit
@@ -248,7 +217,6 @@ do_upgrade_30_14_9() {
 }
 
 # ======================== 补丁函数 ========================
-# 2.1 原有补丁
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
     cd ~ || exit
@@ -267,7 +235,6 @@ do_patch_16_6_fast18() {
     read -p "按回车键继续..."
 }
 
-# 2.2 新增 SQL 修复补丁
 do_patch_166_to167_fix() {
     echo ">>> 正在执行 166升级167_27more 修复（向 kpos 库写入数据）..."
     SQL_COMMANDS="
@@ -384,6 +351,7 @@ network_menu_loop() {
         esac
     done
 }
+
 # ======================== 主入口 ========================
 main() {
     check_dependencies
@@ -398,7 +366,7 @@ main() {
         case $main_choice in
             1) upgrade_menu_loop ;;
             2) patch_menu_loop ;;
-            3) add_network_segment ;;
+            3) network_menu_loop ;;
             0) echo "退出脚本。"; exit 0 ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
