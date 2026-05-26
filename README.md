@@ -25,6 +25,10 @@
 
     cd ~ && rm -f /home/menu/One_Dragon_Go.sh&& wget https://github.com/jonaszhang91/update/raw/refs/heads/main/One_Dragon_Go.sh&& sudo bash /home/menu/One_Dragon_Go.sh
 
+---
+
+### 网盘地址
+    https://drive.google.com/drive/u/0/folders/19YwgZvRA-RzhSbjvGCLBFEhLK8T2vPaY
 
 ---
 ### 菜单
@@ -34,6 +38,7 @@
 1. 升级 (Fast0直接跑升级包)
 2. 打补丁 
 3. 网络设置
+4. 重启tomcat
 0. 退出
 
 #### 二级菜单
@@ -109,3 +114,63 @@
 - ip a 命令 展示本机ip地址
 
     ![ip](./img/ip_addr.png)
+
+- 官方文档地址
+    https://nmap.org/man/zh/index.html
+
+### Rclone命令
+    Rclone 是一款管理云存储文件的命令行程序，通过储存云盘key进行直接配置来实现多设备无需登陆上传和下载云盘文件。
+    
+    本项目通过Rclone config 命令来设置相关网盘授权，使用google网盘授权，通过github储存授权来实现，多设备上传文件
+
+- 官方文档
+     https://rclone.cn/docs/
+### Mysql
+    
+    不多作解释 请查看各网络教程
+
+- 常用命令 
+     
+    1. 备份
+        
+            mysqldump -u root -p --single-transaction --quick --triggers --routines kpos > backup.sql
+
+    2. 恢复
+        
+            mysql -u root -p --init-command="SET autocommit=0; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET sql_log_bin=0;" kpos < backup.sql
+
+    3. 清库
+        
+            drop database kpos；
+        
+    4. 增
+
+            insert into <表名> set(列名) value(值);
+
+    5. 删 
+
+            delete from 表名 where 条件;
+
+    6. 改 
+            
+            update 表名 set 列名 = 新值 where 条件;
+
+    7. 查
+
+            selcet 展示内容（*表示显示全部内容） from 表名 where 条件；
+### tar压缩
+tar 是 Linux/Unix 系统中最常用的打包与压缩工具。它可以将多个文件和目录合并为一个归档文件（打包），并可结合压缩算法（如 gzip, bzip2）实现压缩
+
+Mbox导入导出工具使用的压缩命令
+
+    ps：如果windows老版本软件 使用adminTool 工具导出的文件是加密Sql 无法压缩和常规导入，需要先解码
+
+- 命令
+
+    压缩：
+
+        tar -cvf 目标文件名.tar.gz 源文件或目录
+
+    解压：
+
+        tar -xzvf 压缩文件名.tar.gz
