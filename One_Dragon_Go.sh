@@ -195,7 +195,7 @@ scan_port_on_network() {
         echo ""
         echo "========== 扫描结果与数据库网络打印机对比 =========="
         # 查询 printer 表: real_name != 'Display' AND is_network_printer = 1
-        printer_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, interface_value, ip_address FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 AND ip_address IS NOT NULL AND ip_address != '';" 2>/dev/null)
+        printer_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, interface_value FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 ;" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "数据库查询失败，请检查MySQL连接及表结构。"
         else
