@@ -122,10 +122,9 @@ scan_port_on_network() {
     fi
     
     echo "正在扫描 $target 的 $description (端口 $port) ..."
-    # -n 禁止 DNS 解析，直接显示 IP
     result=$(sudo nmap -p $port --open -Pn -T4 -n "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
     
-    # ========== 刷卡机对比（端口10009） ==========
+    # 刷卡机对比（端口10009）
     if [ "$port" = "10009" ]; then
         echo ""
         echo "========== 扫描结果与数据库PAX设备对比 =========="
@@ -190,23 +189,25 @@ scan_port_on_network() {
         fi
         echo "=============================================="
     
-    # ========== 打印机对比（端口9100） ==========
+    # 打印机对比（端口9100）- 注意 IP 存储在 interface_value 字段
     elif [ "$port" = "9100" ]; then
         echo ""
         echo "========== 扫描结果与数据库网络打印机对比 =========="
-        # 查询 printer 表: real_name != 'Display' AND is_network_printer = 1
-        printer_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, interface_value FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 ;" 2>/dev/null)
+        # 查询 printer 表: real_name != 'Display' AND is_network_printer = 1，使用 interface_value 作为 IP
+        printer_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, interface_value FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 AND interface_value IS NOT NULL AND interface_value != '';" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "数据库查询失败，请检查MySQL连接及表结构。"
         else
             tmp_file_db="/tmp/printer_devices_$$.tmp"
-            echo "$printer_devices" | while IFS=$'\t' read name interface ip; do
+            echo "$printer_devices" | while IFS=$'\t' read name interface; do
+                # interface_value 可能是 IP 地址（如 192.168.1.100）或包含端口，这里只取纯 IP（如包含冒号则取第一部分）
+                ip=$(echo "$interface" | cut -d: -f1)
                 echo "$ip|$name|$interface" >> "$tmp_file_db"
             done
             if [ -f "$tmp_file_db" ]; then
                 echo "数据库中的网络打印机列表："
                 cat "$tmp_file_db" | while IFS='|' read ip name interface; do
-                    echo "  IP: $ip | 名称: $name | 接口: $interface"
+                    echo "  IP: $ip | 名称: $name | 接口值: $interface"
                 done
                 echo ""
                 if [ -n "$result" ]; then
@@ -226,7 +227,7 @@ scan_port_on_network() {
                     found=0
                     cat "$tmp_file_db" | while IFS='|' read ip name interface; do
                         if ! echo "$scanned_ips" | grep -q "^$ip$"; then
-                            echo "  ✗ $ip (名称: $name, 接口: $interface)"
+                            echo "  ✗ $ip (名称: $name, 接口值: $interface)"
                             found=1
                         fi
                     done
@@ -238,7 +239,7 @@ scan_port_on_network() {
                     echo ""
                     echo "数据库中网络打印机列表（但均未扫描到）："
                     cat "$tmp_file_db" | while IFS='|' read ip name interface; do
-                        echo "  IP: $ip | 名称: $name | 接口: $interface"
+                        echo "  IP: $ip | 名称: $name | 接口值: $interface"
                     done
                 fi
                 rm -f "$tmp_file_db"
@@ -256,7 +257,7 @@ scan_port_on_network() {
         fi
         echo "=============================================="
     
-    # ========== 其他端口（仅显示IP） ==========
+    # 其他端口
     else
         if [ -z "$result" ]; then
             echo "未发现开放端口 $port 的设备。"
