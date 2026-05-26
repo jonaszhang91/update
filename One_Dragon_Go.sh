@@ -86,20 +86,17 @@ scan_port_on_network() {
         fi
     fi
     
-    # 获取网段列表（存储到变量，每行一个网段）
+    # 获取网段列表
     segments=$(get_network_segments)
     if [ -z "$segments" ]; then
-        echo "未找到有效网段，请手动输入。"
-        read -p "请输入要扫描的网段（如 192.168.1.0/24）: " target
+        echo "未自动检测到有效网段。"
+        read -p "请手动输入要扫描的网段（如 192.168.1.0/24）: " target
     else
-        # 将网段列表转为行数组（使用 awk 编号）
-        echo "检测到以下网段："
-        seg_count=0
-        # 使用临时文件存储网段，避免子 shell 问题
+        # 使用数组存储（通过临时文件）
         tmp_file="/tmp/net_segments_$$"
         echo "$segments" > "$tmp_file"
         seg_count=$(wc -l < "$tmp_file")
-        # 显示列表
+        echo "检测到以下网段："
         awk '{print "  " NR ") " $0}' "$tmp_file"
         echo "  0) 手动输入网段"
         printf "请选择要扫描的网段 [0-%d]: " "$seg_count"
@@ -118,7 +115,6 @@ scan_port_on_network() {
     fi
     
     echo "正在扫描 $target 的 $description (端口 $port) ..."
-    # 使用 nmap 扫描，仅显示开放的 IP
     result=$(sudo nmap -p $port --open -Pn -T4 "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
     if [ -z "$result" ]; then
         echo "未发现开放端口 $port 的设备。"
