@@ -371,6 +371,7 @@ patch_menu_loop() {
         esac
     done
 }
+
 network_menu_loop() {
     while true; do
         show_network_menu
@@ -383,7 +384,6 @@ network_menu_loop() {
         esac
     done
 }
-
 # ======================== 主入口 ========================
 main() {
     check_dependencies
