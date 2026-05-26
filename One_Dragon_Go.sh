@@ -61,7 +61,7 @@ get_network_segments() {
         if [ -n "$cidr" ]; then
             ip_part=$(echo "$cidr" | cut -d'/' -f1)
             mask=$(echo "$cidr" | cut -d'/' -f2)
-            # 跳过回环地址段 127.x.x.x
+            # 跳过回环地址段
             case "$ip_part" in
                 127.*) continue ;;
             esac
@@ -71,12 +71,11 @@ get_network_segments() {
     done | sort -u
 }
 
-# ======================== 扫描指定端口 ========================
+# ======================== 扫描指定端口（含数据库对比） ========================
 scan_port_on_network() {
     port=$1
     description=$2
     
-    # 检查 nmap
     if ! command -v nmap > /dev/null 2>&1; then
         echo "nmap 未安装，是否安装？(y/n): "
         read install_nmap
@@ -94,7 +93,6 @@ scan_port_on_network() {
         fi
     fi
     
-    # 获取网段列表
     segments=$(get_network_segments)
     if [ -z "$segments" ]; then
         echo "未自动检测到有效网段。"
@@ -189,11 +187,10 @@ scan_port_on_network() {
         fi
         echo "=============================================="
     
-    # 打印机对比（端口9100）—— 修正：使用 interface_value 作为 IP 地址
+    # 打印机对比（端口9100）—— 使用 interface_value 作为 IP
     elif [ "$port" = "9100" ]; then
         echo ""
         echo "========== 扫描结果与数据库网络打印机对比 =========="
-        # 注意：IP地址存储在 interface_value 字段中
         printer_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, interface_value, interface_value FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 AND interface_value IS NOT NULL AND interface_value != '';" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "数据库查询失败，请检查MySQL连接及表结构。"
@@ -255,7 +252,6 @@ scan_port_on_network() {
         fi
         echo "=============================================="
     
-    # 其他端口（仅显示IP）
     else
         if [ -z "$result" ]; then
             echo "未发现开放端口 $port 的设备。"
@@ -270,6 +266,7 @@ scan_port_on_network() {
     fi
     read -p "按回车键继续..."
 }
+
 # ======================== 添加静态IP（追加模式） ========================
 add_network_segment() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
@@ -398,6 +395,18 @@ reset_network() {
     read -p "按回车键继续..."
 }
 
+# ======================== 重启 Tomcat ========================
+restart_tomcat() {
+    echo ">>> 正在重启 Tomcat 服务..."
+    sudo service tomcat restart
+    if [ $? -eq 0 ]; then
+        echo ">>> Tomcat 重启成功"
+    else
+        echo ">>> Tomcat 重启失败，请检查服务状态"
+    fi
+    read -p "按回车键继续..."
+}
+
 # ======================== 升级函数 ========================
 do_upgrade_16_6_fast0() {
     echo ">>> 正在执行升级 16.6 fast0，菜单将关闭..."
@@ -490,12 +499,11 @@ show_main_menu() {
     echo "网络IP列表："
     show_network_ips
     echo "======================"
-    # 获取 CPU 型号（取第一个物理CPU的型号）
+    # 硬件信息
     cpu_model=$(lscpu | grep "Model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
     if [ -z "$cpu_model" ]; then
         cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
     fi
-    # 获取内存总大小（GB/MB格式）
     mem_total=$(free -h | grep Mem | awk '{print $2}')
     echo "硬件信息："
     echo "  CPU: $cpu_model"
@@ -504,8 +512,9 @@ show_main_menu() {
     echo "1. 升级"
     echo "2. 打补丁"
     echo "3. 网络设置"
+    echo "4. 重启 Tomcat"
     echo "0. 退出"
-    printf "请选择 [0-3]: "
+    printf "请选择 [0-4]: "
 }
 
 show_upgrade_menu() {
@@ -538,7 +547,7 @@ show_network_menu() {
     echo "    网络设置子菜单"
     echo "======================"
     echo "3.1 添加静态IP（追加模式）"
-    echo "3.2 重置网络（清除所有虚拟网段）"
+    echo "3.2 重置网络（恢复DHCP）"
     echo "3.3 扫描刷卡机（端口10009）"
     echo "3.4 扫描打印机（端口9100）"
     echo "0. 返回主菜单"
@@ -605,6 +614,7 @@ main() {
             1) upgrade_menu_loop ;;
             2) patch_menu_loop ;;
             3) network_menu_loop ;;
+            4) restart_tomcat ;;
             0) echo "退出脚本。"; exit 0 ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
