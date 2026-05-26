@@ -124,15 +124,93 @@ scan_port_on_network() {
     echo "正在扫描 $target 的 $description (端口 $port) ..."
     # -n 禁止 DNS 解析，直接显示 IP
     result=$(sudo nmap -p $port --open -Pn -T4 -n "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
-    if [ -z "$result" ]; then
-        echo "未发现开放端口 $port 的设备。"
+    
+    # 如果是刷卡机扫描（端口10009），则进行数据库对比
+    if [ "$port" = "10009" ]; then
+        echo ""
+        echo "========== 扫描结果与数据库PAX设备对比 =========="
+        # 查询数据库中 manufacturer_name 为 PAX 的设备
+        # 假设表名 device，字段 name, ip_address, model_name
+        pax_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, ip_address, model_name FROM device WHERE manufacturer_name = 'PAX' AND ip_address IS NOT NULL AND ip_address != '';" 2>/dev/null)
+        if [ $? -ne 0 ]; then
+            echo "数据库查询失败，请检查MySQL连接及表结构。"
+        else
+            # 存储数据库中的 IP 和对应信息
+            db_ips=""
+            echo "$pax_devices" | while IFS=$'\t' read name ip model; do
+                db_ips="$db_ips $ip"
+                # 这里不能直接在子 shell 中累积，改用临时文件
+                echo "$ip|$name|$model" >> /tmp/pax_devices_$$.tmp
+            done
+            # 如果有数据库记录，进行对比
+            if [ -f /tmp/pax_devices_$$.tmp ]; then
+                echo "数据库中的PAX设备列表："
+                cat /tmp/pax_devices_$$.tmp | while IFS='|' read ip name model; do
+                    echo "  IP: $ip | 名称: $name | 型号: $model"
+                done
+                echo ""
+                # 扫描到的 IP 列表
+                if [ -n "$result" ]; then
+                    echo "扫描到开放端口10009的设备："
+                    scanned_ips="$result"
+                    # 逐个对比
+                    echo "$scanned_ips" | while read ip; do
+                        matched=$(grep "^$ip|" /tmp/pax_devices_$$.tmp)
+                        if [ -n "$matched" ]; then
+                            info=$(echo "$matched" | cut -d'|' -f2-3)
+                            echo "  ✓ $ip (数据库中已存在: $info)"
+                        else
+                            echo "  ✗ $ip (未在数据库中登记为PAX设备)"
+                        fi
+                    done
+                    echo ""
+                    # 数据库中未扫描到的 IP
+                    echo "数据库中PAX设备但未扫描到的IP（可能离线或未开放端口）："
+                    db_has_scanned=0
+                    cat /tmp/pax_devices_$$.tmp | while IFS='|' read ip name model; do
+                        if ! echo "$scanned_ips" | grep -q "^$ip$"; then
+                            echo "  ✗ $ip (名称: $name, 型号: $model)"
+                            db_has_scanned=1
+                        fi
+                    done
+                    if [ $db_has_scanned -eq 0 ]; then
+                        echo "  无"
+                    fi
+                else
+                    echo "扫描未发现任何开放10009端口的设备。"
+                    echo ""
+                    echo "数据库中PAX设备列表（但均未扫描到）："
+                    cat /tmp/pax_devices_$$.tmp | while IFS='|' read ip name model; do
+                        echo "  IP: $ip | 名称: $name | 型号: $model"
+                    done
+                fi
+                rm -f /tmp/pax_devices_$$.tmp
+            else
+                echo "数据库中没有 manufacturer_name='PAX' 的设备记录。"
+                # 仍然显示扫描结果
+                if [ -n "$result" ]; then
+                    echo "扫描到开放端口10009的设备："
+                    echo "$result" | while read ip; do
+                        echo "  $ip"
+                    done
+                else
+                    echo "未发现开放端口10009的设备。"
+                fi
+            fi
+        fi
+        echo "=============================================="
     else
-        echo "发现以下设备开放 $description 端口 $port："
-        i=1
-        echo "$result" | while read ip; do
-            echo "  $i) $ip"
-            i=$((i+1))
-        done
+        # 非刷卡机扫描（打印机等），仅显示IP列表
+        if [ -z "$result" ]; then
+            echo "未发现开放端口 $port 的设备。"
+        else
+            echo "发现以下设备开放 $description 端口 $port："
+            i=1
+            echo "$result" | while read ip; do
+                echo "  $i) $ip"
+                i=$((i+1))
+            done
+        fi
     fi
     read -p "按回车键继续..."
 }
@@ -293,7 +371,7 @@ do_upgrade_30_13() {
     echo ">>> 正在执行升级 30.13，菜单将关闭..."
     cd /home/menu || exit
     rm -f POS_update.sh
-    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://menusifu.com.cn:29120/18030.13/POS_update.sh
+    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://skymenu.menusifu.com.cn:29120/18030.13/POS_update.sh
     exec sudo sh POS_update.sh
 }
 
@@ -393,7 +471,7 @@ show_network_menu() {
     echo "    网络设置子菜单"
     echo "======================"
     echo "3.1 添加静态IP（追加模式）"
-    echo "3.2 重置网络（恢复DHCP）"
+    echo "3.2 重置网络（清除所有虚拟网段）"
     echo "3.3 扫描刷卡机（端口10009）"
     echo "3.4 扫描打印机（端口9100）"
     echo "0. 返回主菜单"
