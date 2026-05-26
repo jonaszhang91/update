@@ -145,7 +145,7 @@
         
     4. 增
 
-            insert into <表名> set(列名) value(值);
+            insert into 表名 set(列名) value(值);
 
     5. 删 
 
