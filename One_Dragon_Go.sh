@@ -47,15 +47,20 @@ show_network_ips() {
     fi
 }
 
-# ======================== 获取可用网段列表（基于现有IP） ========================
+# ======================== 获取可用网段列表（基于现有IP）返回格式：网段\n网段... ========================
 get_network_segments() {
+    # 使用 ip 命令获取所有非虚拟接口的 IP/CIDR，转换为网段格式（x.x.x.0/掩码）
     ip -o -4 addr show | grep -v LOOPBACK | grep -v docker | grep -v veth | grep -v br- | while read line; do
-        iface=$(echo "$line" | awk '{print $2}')
-        cidr=$(echo "$line" | awk '{print $4}')
+        cidr=$(echo "$line" | awk '{print $4}')   # 例如 192.168.1.100/24
         if [ -n "$cidr" ]; then
-            echo "$iface|$cidr"
+            # 提取 IP 和掩码位数
+            ip_part=$(echo "$cidr" | cut -d'/' -f1)
+            mask=$(echo "$cidr" | cut -d'/' -f2)
+            # 将 IP 的最后一节替换为 0 得到网络地址
+            network=$(echo "$ip_part" | sed 's/\.[0-9]*$/.0/')
+            echo "${network}/${mask}"
         fi
-    done
+    done | sort -u  # 去重
 }
 
 # ======================== 扫描指定端口 ========================
@@ -63,6 +68,7 @@ scan_port_on_network() {
     port=$1
     description=$2
     
+    # 检查 nmap
     if ! command -v nmap > /dev/null 2>&1; then
         echo "nmap 未安装，是否安装？(y/n): "
         read install_nmap
@@ -80,37 +86,39 @@ scan_port_on_network() {
         fi
     fi
     
+    # 获取网段列表（存储到变量，每行一个网段）
     segments=$(get_network_segments)
     if [ -z "$segments" ]; then
         echo "未找到有效网段，请手动输入。"
         read -p "请输入要扫描的网段（如 192.168.1.0/24）: " target
     else
+        # 将网段列表转为行数组（使用 awk 编号）
         echo "检测到以下网段："
-        idx=1
-        segment_list=""
-        echo "$segments" | while read seg; do
-            iface=$(echo "$seg" | cut -d'|' -f1)
-            cidr=$(echo "$seg" | cut -d'|' -f2)
-            network=$(echo "$cidr" | sed 's/\.[0-9]*\//.0\//')
-            echo "  $idx) $iface: $network"
-            segment_list="$segment_list|$network"
-            idx=$((idx+1))
-        done
+        seg_count=0
+        # 使用临时文件存储网段，避免子 shell 问题
+        tmp_file="/tmp/net_segments_$$"
+        echo "$segments" > "$tmp_file"
+        seg_count=$(wc -l < "$tmp_file")
+        # 显示列表
+        awk '{print "  " NR ") " $0}' "$tmp_file"
         echo "  0) 手动输入网段"
-        printf "请选择要扫描的网段 [0-%d]: " $((idx-1))
+        printf "请选择要扫描的网段 [0-%d]: " "$seg_count"
         read choice
         if [ "$choice" = "0" ]; then
             read -p "请输入网段（如 192.168.1.0/24）: " target
-        elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$idx" ]; then
-            target=$(echo "$segments" | sed -n "${choice}p" | cut -d'|' -f2 | sed 's/\.[0-9]*\//.0\//')
+        elif [ "$choice" -ge 1 ] && [ "$choice" -le "$seg_count" ]; then
+            target=$(sed -n "${choice}p" "$tmp_file")
         else
             echo "无效选择。"
+            rm -f "$tmp_file"
             read -p "按回车键继续..."
             return 1
         fi
+        rm -f "$tmp_file"
     fi
     
     echo "正在扫描 $target 的 $description (端口 $port) ..."
+    # 使用 nmap 扫描，仅显示开放的 IP
     result=$(sudo nmap -p $port --open -Pn -T4 "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
     if [ -z "$result" ]; then
         echo "未发现开放端口 $port 的设备。"
