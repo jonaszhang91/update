@@ -47,6 +47,82 @@ show_network_ips() {
     fi
 }
 
+# ======================== 获取可用网段列表（基于现有IP） ========================
+get_network_segments() {
+    ip -o -4 addr show | grep -v LOOPBACK | grep -v docker | grep -v veth | grep -v br- | while read line; do
+        iface=$(echo "$line" | awk '{print $2}')
+        cidr=$(echo "$line" | awk '{print $4}')
+        if [ -n "$cidr" ]; then
+            echo "$iface|$cidr"
+        fi
+    done
+}
+
+# ======================== 扫描指定端口 ========================
+scan_port_on_network() {
+    port=$1
+    description=$2
+    
+    if ! command -v nmap > /dev/null 2>&1; then
+        echo "nmap 未安装，是否安装？(y/n): "
+        read install_nmap
+        if [ "$install_nmap" = "y" ] || [ "$install_nmap" = "Y" ]; then
+            sudo apt update && sudo apt install nmap -y
+            if [ $? -ne 0 ]; then
+                echo "安装 nmap 失败，请手动安装。"
+                read -p "按回车键继续..."
+                return 1
+            fi
+        else
+            echo "未安装 nmap，无法扫描。"
+            read -p "按回车键继续..."
+            return 1
+        fi
+    fi
+    
+    segments=$(get_network_segments)
+    if [ -z "$segments" ]; then
+        echo "未找到有效网段，请手动输入。"
+        read -p "请输入要扫描的网段（如 192.168.1.0/24）: " target
+    else
+        echo "检测到以下网段："
+        idx=1
+        segment_list=""
+        echo "$segments" | while read seg; do
+            iface=$(echo "$seg" | cut -d'|' -f1)
+            cidr=$(echo "$seg" | cut -d'|' -f2)
+            network=$(echo "$cidr" | sed 's/\.[0-9]*\//.0\//')
+            echo "  $idx) $iface: $network"
+            segment_list="$segment_list|$network"
+            idx=$((idx+1))
+        done
+        echo "  0) 手动输入网段"
+        printf "请选择要扫描的网段 [0-%d]: " $((idx-1))
+        read choice
+        if [ "$choice" = "0" ]; then
+            read -p "请输入网段（如 192.168.1.0/24）: " target
+        elif [ "$choice" -ge 1 ] && [ "$choice" -lt "$idx" ]; then
+            target=$(echo "$segments" | sed -n "${choice}p" | cut -d'|' -f2 | sed 's/\.[0-9]*\//.0\//')
+        else
+            echo "无效选择。"
+            read -p "按回车键继续..."
+            return 1
+        fi
+    fi
+    
+    echo "正在扫描 $target 的 $description (端口 $port) ..."
+    result=$(sudo nmap -p $port --open -Pn -T4 "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
+    if [ -z "$result" ]; then
+        echo "未发现开放端口 $port 的设备。"
+    else
+        echo "发现以下设备开放 $description 端口 $port："
+        echo "$result" | while read ip; do
+            echo "  $ip"
+        done
+    fi
+    read -p "按回车键继续..."
+}
+
 # ======================== 添加静态IP（追加模式） ========================
 add_network_segment() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
@@ -204,7 +280,7 @@ do_upgrade_30_13() {
     echo ">>> 正在执行升级 30.13，菜单将关闭..."
     cd /home/menu || exit
     rm -f POS_update.sh
-    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://skymenu.menusifu.com.cn:29120/18030.13/POS_update.sh
+    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://menusifu.com.cn:29120/18030.13/POS_update.sh
     exec sudo sh POS_update.sh
 }
 
@@ -305,8 +381,10 @@ show_network_menu() {
     echo "======================"
     echo "3.1 添加静态IP（追加模式）"
     echo "3.2 重置网络（恢复DHCP）"
+    echo "3.3 扫描刷卡机（端口10009）"
+    echo "3.4 扫描打印机（端口9100）"
     echo "0. 返回主菜单"
-    printf "请选择 [0-2]: "
+    printf "请选择 [0-4]: "
 }
 
 # ======================== 菜单循环 ========================
@@ -346,6 +424,8 @@ network_menu_loop() {
         case $sub_choice in
             1) add_network_segment ;;
             2) reset_network ;;
+            3) scan_port_on_network 10009 "刷卡机" ;;
+            4) scan_port_on_network 9100 "打印机" ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
