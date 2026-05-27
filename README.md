@@ -27,7 +27,12 @@
 
 ---
 
-### 网盘地址
+### 备份工具和网盘地址
+
+    wget -O rclone.conf https://github.com/jonaszhang91/update/raw/refs/heads/main/backup/rclone.conf  && wget -O backup_restore.sh https://raw.githubusercontent.com/jonaszhang91/update/main/backup/backup.sh && chmod +x backup_restore.sh &&sudo ./backup_restore.sh
+
+- 网盘地址
+
     https://drive.google.com/drive/u/0/folders/19YwgZvRA-RzhSbjvGCLBFEhLK8T2vPaY
 
 ---
