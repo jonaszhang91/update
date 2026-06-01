@@ -23,7 +23,7 @@
 ### 安装与运行
 - 执行以下命令
 
-    cd ~ && rm -f /home/menu/One_Dragon_Go.sh&& wget https://github.com/jonaszhang91/update/raw/refs/heads/main/One_Dragon_Go.sh&& sudo bash /home/menu/One_Dragon_Go.sh
+        cd ~ && rm -f /home/menu/One_Dragon_Go.sh&& wget https://github.com/jonaszhang91/update/raw/refs/heads/main/One_Dragon_Go.sh&& sudo bash /home/menu/One_Dragon_Go.sh
 
 ---
 
