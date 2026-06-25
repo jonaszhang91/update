@@ -400,8 +400,6 @@ echo "\033[33m +--------------------------------------------------------------+\
 
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
-sudo rm -f /home/menu/menusifu_magic_update.tar.gz
-sudo rm -f /home/menu/kpos.war
 sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
 sudo rm -rf /home/menu/pit
 wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O /home/menu/pit 
@@ -409,7 +407,6 @@ unzip /home/menu/pit
 sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
 sudo rm -rf /home/menu/pit
 sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
-sudo service tomcat restart
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
@@ -431,7 +428,7 @@ emenu_update (){
 	echo "\033[34m +--------------------------------------------------------------+\033[0m"
 	echo ""
 
-	cd /home/menu/ && rm -f /home/menu/emenu.zip && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/EMENU/emenu.zip
+	cd /home/menu/ && rm -f /home/menu/emenu.zip && wget --user=baol22 --password=1qaz@WSX6788 http://skymenu.menusifu.com.cn:29120/EMENU/emenu.zip
 	sleep 1
 	
 	echo "\033[33m===========================================\033[0m"
@@ -458,7 +455,7 @@ kiosk_update (){
 	echo "\033[34m +--------------------------------------------------------------+\033[0m"
 	echo ""
 		
-	cd /home/menu/ && rm -f /home/menu/kiosklite.zip && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/KIOSK/kiosklite.zip
+	cd /home/menu/ && rm -f /home/menu/kiosklite.zip && wget --user=baol22 --password=1qaz@WSX6788 http://skymenu.menusifu.com.cn:29120/KIOSK/kiosklite.zip
 	sleep 1
 	
 	echo "\033[33m===========================================\033[0m"
@@ -557,10 +554,10 @@ else
 	echo "\033[33m |                   POS模式---$POS_MODE                     |\033[0m"
 fi
 echo "\033[33m |                                                        |\033[0m" 
-echo "\033[33m | 1：升级 POS $SHELL_VERSION                               |\033[0m"
-echo "\033[33m | 2: 升级 E-Menu 最新版本                                |\033[0m"
-echo "\033[33m | 3: 升级 Kiosk  最新版本                                |\033[0m"
-echo "\033[33m | 4: 升级 Datahub 最新版本                               |\033[0m"                            
+echo "\033[33m | 1：升级 POS $SHELL_VERSION                             |\033[0m"
+echo "\033[33m | 2: 升级 E-Menu                                         |\033[0m"
+echo "\033[33m | 3: 升级 Kiosk                                          |\033[0m"
+echo "\033[33m | 4: 升级 Datahub                                        |\033[0m"                            
 echo "\033[33m |                                                        |\033[0m"
 echo "\033[33m | 0: 退出程序                                            |\033[0m"
 echo "\033[33m |                                                        |\033[0m"
@@ -607,7 +604,7 @@ elif [ "$answer" = "3" ]
 
 elif [ "$answer" = "4" ]
 	then
-	cd /home/menu/ && rm -f cloudDatahub.war && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/datahub_package/cloudDatahub.war
+	cd /home/menu/ && rm -f cloudDatahub.war && wget --user=baol22 --password=1qaz@WSX6788 http://skymenu.menusifu.com.cn:29120/datahub_package/cloudDatahub.war
 	sleep 1
 
 DATEHUB_MD5=`md5sum cloudDatahub.war|cut -d ' ' -f1`
