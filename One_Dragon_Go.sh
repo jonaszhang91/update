@@ -436,7 +436,7 @@ do_upgrade_30_13() {
     echo ">>> 正在执行升级 30.13，菜单将关闭..."
     cd /home/menu || exit
     rm -f POS_update.sh
-    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://skymenu.menusifu.com.cn:29120/18030.13/POS_update.sh
+    wget -O POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/30.13/POS_update.sh
     exec sudo sh POS_update.sh
 }
 
