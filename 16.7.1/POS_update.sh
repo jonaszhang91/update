@@ -395,7 +395,6 @@ sudo rm -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381
 wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1ZsAQctnQ8tthSud1TV8JtDopDcpH0yu3' -O /home/menu/pit 
 unzip /home/menu/pit 
 sudo cp -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
-sudo service tomcat restart
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
