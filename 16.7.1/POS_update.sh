@@ -417,7 +417,7 @@ emenu_update (){
 	echo "\033[34m +--------------------------------------------------------------+\033[0m"
 	echo ""
 
-	cd /home/menu/ && rm -f /home/menu/emenu.zip && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/EMENU/emenu.zip
+	cd /home/menu/ && rm -f /home/menu/emenu.zip && wget --user=baol22 --password=1qaz@WSX6788 http://skymenu.menusifu.com.cn:29120/EMENU/emenu.zip
 	sleep 1
 	
 	echo "\033[33m===========================================\033[0m"
@@ -444,7 +444,7 @@ kiosk_update (){
 	echo "\033[34m +--------------------------------------------------------------+\033[0m"
 	echo ""
 		
-	cd /home/menu/ && rm -f /home/menu/kiosklite.zip && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/KIOSK/kiosklite.zip
+	cd /home/menu/ && rm -f /home/menu/kiosklite.zip && wget --user=baol22 --password=1qaz@WSX6788 http://skymenu.menusifu.com.cn:29120/KIOSK/kiosklite.zip
 	sleep 1
 	
 	echo "\033[33m===========================================\033[0m"
@@ -593,7 +593,7 @@ elif [ "$answer" = "3" ]
 
 elif [ "$answer" = "4" ]
 	then
-	cd /home/menu/ && rm -f cloudDatahub.war && wget --user=baol22 --password=1qaz@WSX6788 http://58.240.120.14:29120/datahub_package/cloudDatahub.war
+	cd /home/menu/ && rm -f cloudDatahub.war && wget --user=baol22 --password=1qaz@WSX6788 http://skymenu.menusifu.com.cn:29120/datahub_package/cloudDatahub.war
 	sleep 1
 
 DATEHUB_MD5=`md5sum cloudDatahub.war|cut -d ' ' -f1`
