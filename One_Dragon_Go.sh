@@ -436,7 +436,7 @@ do_upgrade_30_13() {
     echo ">>> 正在执行升级 30.13，菜单将关闭..."
     cd /home/menu || exit
     rm -f POS_update.sh
-    wget -O POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/30.13/POS_update.sh
+    wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://menusifu.com.cn:29120/18030.13/POS_update.sh
     exec sudo sh POS_update.sh
 }
 
@@ -449,6 +449,7 @@ do_upgrade_30_14_9() {
 }
 
 # ======================== 补丁函数 ========================
+# 2.1 16.6 fast18 补丁
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
     cd ~ || exit
@@ -467,6 +468,7 @@ do_patch_16_6_fast18() {
     read -p "按回车键继续..."
 }
 
+# 2.2 166升级167_27more修复
 do_patch_166_to167_fix() {
     echo ">>> 正在执行 166升级167_27more 修复（向 kpos 库写入数据）..."
     SQL_COMMANDS="
@@ -486,6 +488,44 @@ ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- no
         echo ">>> 166升级167_27more 修复完成"
     else
         echo ">>> 修复过程中出现部分错误（如字段已存在），请检查上方输出。"
+    fi
+    read -p "按回车键继续..."
+}
+
+# 2.3 17.2 fast0 补丁
+do_patch_17_2_fast0() {
+    echo ">>> 正在执行 17.2 fast0 补丁 ..."
+    cd /home/menu || exit
+    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
+    sudo rm -rf /home/menu/pit
+    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O /home/menu/pit
+    unzip /home/menu/pit
+    sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    sudo rm -rf /home/menu/pit
+    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
+    if [ $? -eq 0 ]; then
+        echo ">>> 17.2 fast0 补丁完成"
+    else
+        echo ">>> 17.2 fast0 补丁失败，请检查错误"
+    fi
+    read -p "按回车键继续..."
+}
+
+# ======================== 新增：2.4 16.7.2 fast16 补丁 ========================
+do_patch_16_7_2_fast16() {
+    echo ">>> 正在执行 16.7.2 fast16 补丁 ..."
+    cd /home/menu || exit
+    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
+    sudo rm -rf /home/menu/pit
+    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0' -O /home/menu/pit
+    unzip /home/menu/pit
+    sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    sudo rm -rf /home/menu/pit
+    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
+    if [ $? -eq 0 ]; then
+        echo ">>> 16.7.2 fast16 补丁完成"
+    else
+        echo ">>> 16.7.2 fast16 补丁失败，请检查错误"
     fi
     read -p "按回车键继续..."
 }
@@ -537,8 +577,10 @@ show_patch_menu() {
     echo "======================"
     echo "2.1 16.6 fast18 补丁"
     echo "2.2 166升级167_27more修复"
+    echo "2.3 17.2 fast0 补丁"
+    echo "2.4 16.7.2 fast16 补丁"
     echo "0. 返回主菜单"
-    printf "请选择 [0-2]: "
+    printf "请选择 [0-4]: "
 }
 
 show_network_menu() {
@@ -578,6 +620,8 @@ patch_menu_loop() {
         case $sub_choice in
             1) do_patch_16_6_fast18 ;;
             2) do_patch_166_to167_fix ;;
+            3) do_patch_17_2_fast0 ;;
+            4) do_patch_16_7_2_fast16 ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
