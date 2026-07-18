@@ -396,6 +396,13 @@ echo "\033[33m +--------------------------------------------------------------+\
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
 sudo sudo chown menu:menu /home/menu/latest_update.log
+sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
+sudo rm -rf /home/menu/pit
+wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O /home/menu/pit 
+unzip /home/menu/pit 
+sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
+sudo rm -rf /home/menu/pit
+sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
 
