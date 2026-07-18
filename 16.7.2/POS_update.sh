@@ -1,7 +1,7 @@
 #!/bin/bash
   
 # 脚本维护人员   星星叫
-# 脚本更新时间   2026-04-28
+# 脚本更新时间   2026-07-17
 # 脚本适用环境   Ubuntu 18.04/22.04
 # 升级脚本编号   18030.16.7.2
 
@@ -25,7 +25,7 @@ FREEDISK=$(df -h | grep -w / | awk -F " " '{print $(NF-2)}'| cut -c1-2 | tr -d '
 
 UPDATE_ID="1d1lZw_iWLG8bxyticc_hHLQN8KmNEzmr"
 
-UPDATE_MD5='d1e8ec85ff7bdbb655ab951d62448f78'
+UPDATE_MD5='caed1348baf4d9b2d3ce314584436a0a'
 
 #------------------------------------------------------
 
@@ -148,7 +148,6 @@ else
 fi
 
 ####################################以下为升级脚本####################################
-
 #!/bin/bash
 
 SUDO='sudo'
@@ -239,13 +238,6 @@ if [ -n "$LUBUNTU_PROCESS_ID" ];then
     IS_LUBUNTU=1
 fi
 
-echo ""
-echo "\033[33m ***************************************************************\033[0m" 
-echo "\033[33m *                                                             *\033[0m" 
-echo "\033[33m *         Automatic Update Program V$NEW_UPDATE_POS_VERSION for Menusifu     *\033[0m" 
-echo "\033[33m *                                                             *\033[0m" 
-echo "\033[33m ***************************************************************\033[0m" 
-echo ""
 
 ################### Check Update Version ######################
 echo  "\033[32m ################## check update version... #################### \033[0m"
@@ -379,6 +371,9 @@ $SUDO systemctl start tomcat
 $SUDO rm -rf $UPDATE_FILE
 echo "\033[32m ################### update kpos.war complete! ################## \033[0m"
 
+
+
+
 ####################################以上为升级脚本####################################
 
 sudo awk -F " " 'BEGIN{OFS="---> "}NR==6{print $2,$3}' /home/menu/POS_update.sh >> /home/menu/pos_update_history.log
@@ -400,13 +395,6 @@ echo "\033[33m +--------------------------------------------------------------+\
 
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
-sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
-sudo rm -rf /home/menu/pit
-wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O /home/menu/pit 
-unzip /home/menu/pit 
-sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
-sudo rm -rf /home/menu/pit
-sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
