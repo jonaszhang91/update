@@ -10,7 +10,7 @@ check_dependencies() {
     done
 }
 
-# ======================== 获取所有IPv4地址（正确识别 DHCP / 静态 / 虚拟） ========================
+# ======================== 获取所有IPv4地址 ========================
 show_network_ips() {
     if ip -d -o -4 addr show > /dev/null 2>&1; then
         ip -d -o -4 addr show | grep -v LOOPBACK | grep -v "127.0.0.1" | while read line; do
@@ -47,11 +47,10 @@ show_network_ips() {
     fi
 }
 
-# ======================== 获取可用网段列表（基于现有IP）返回格式：网段\n网段... ========================
+# ======================== 获取可用网段列表 ========================
 get_network_segments() {
     ip -o -4 addr show | while read line; do
         iface=$(echo "$line" | awk '{print $2}')
-        # 跳过回环和虚拟接口
         case "$iface" in
             lo|docker*|veth*|br-*|virbr*|lxc*|vnet*|tun*|tap*|tunnel*|wg*|ovs*)
                 continue
@@ -61,7 +60,6 @@ get_network_segments() {
         if [ -n "$cidr" ]; then
             ip_part=$(echo "$cidr" | cut -d'/' -f1)
             mask=$(echo "$cidr" | cut -d'/' -f2)
-            # 跳过回环地址段
             case "$ip_part" in
                 127.*) continue ;;
             esac
@@ -71,7 +69,7 @@ get_network_segments() {
     done | sort -u
 }
 
-# ======================== 扫描指定端口（含数据库对比） ========================
+# ======================== 扫描端口（刷卡机/打印机对比） ========================
 scan_port_on_network() {
     port=$1
     description=$2
@@ -122,7 +120,6 @@ scan_port_on_network() {
     echo "正在扫描 $target 的 $description (端口 $port) ..."
     result=$(sudo nmap -p $port --open -Pn -T4 -n "$target" 2>/dev/null | grep -E "^Nmap scan report for" | awk '{print $5}')
     
-    # 刷卡机对比（端口10009）
     if [ "$port" = "10009" ]; then
         echo ""
         echo "========== 扫描结果与数据库PAX设备对比 =========="
@@ -187,7 +184,6 @@ scan_port_on_network() {
         fi
         echo "=============================================="
     
-    # 打印机对比（端口9100）—— 使用 interface_value 作为 IP
     elif [ "$port" = "9100" ]; then
         echo ""
         echo "========== 扫描结果与数据库网络打印机对比 =========="
@@ -366,7 +362,7 @@ EOF"
     read -p "按回车键继续..."
 }
 
-# ======================== 重置网络（删除50文件并恢复DHCP） ========================
+# ======================== 重置网络（恢复DHCP） ========================
 reset_network() {
     NETPLAN_FILE="/etc/netplan/50-cloud-init.yaml"
     echo ">>> 即将重置网络：删除 $NETPLAN_FILE 并应用 netplan 默认配置（DHCP）"
@@ -448,104 +444,103 @@ do_upgrade_30_14_9() {
     exec sudo sh POS_update.sh
 }
 
-# ======================== 补丁函数（动态检测解压目录，修正路径错误） ========================
-# 2.1 16.6 fast18 补丁
+# ======================== 补丁函数（动态检测解压目录，忽略SQL重复列错误） ========================
+# 2.1 16.6 fast18
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
     cd /home/menu || exit
     sudo rm -rf pit
     sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1-55kWzmMsctc06FCHlPrbgeQGU6jwS3X' -O pit
-    unzip pit > /dev/null
-    # 获取解压出的第一个目录（排除 pit 自身）
-    PATCH_DIR=$(ls -d */ 2>/dev/null | grep -v '^pit$' | head -1 | sed 's|/||')
+    unzip pit > /dev/null 2>&1
+    # 精确查找解压出的目录（匹配 1.8.0.30.*-PIT-* 模式）
+    PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
     if [ -z "$PATCH_DIR" ]; then
         echo "无法确定解压后的目录，请检查补丁包。"
         read -p "按回车键继续..."
         return 1
     fi
+    echo "检测到补丁目录: $PATCH_DIR"
     sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    mysql -u root --password='N0mur@4$99!' kpos < "$PATCH_DIR"/alter_terminal.sql
-    mysql -u root --password='N0mur@4$99!' kpos < "$PATCH_DIR"/0_db.sql
+    # 执行SQL，忽略重复列错误（使用 mysql --force）
+    mysql -u root --password='N0mur@4$99!' --force kpos < "$PATCH_DIR"/alter_terminal.sql 2>/dev/null
+    mysql -u root --password='N0mur@4$99!' --force kpos < "$PATCH_DIR"/0_db.sql 2>/dev/null
     sudo service tomcat restart
     if [ $? -eq 0 ]; then
         echo ">>> 16.6 fast18 补丁完成"
     else
-        echo ">>> 16.6 fast18 补丁失败，请检查错误"
+        echo ">>> 16.6 fast18 补丁部分失败，请检查上方输出。"
     fi
     sudo rm -rf pit "$PATCH_DIR"
     read -p "按回车键继续..."
 }
 
-# 2.2 166升级167_27more修复（SQL，无文件操作）
+# 2.2 166→167 SQL修复（保留原逻辑）
 do_patch_166_to167_fix() {
     echo ">>> 正在执行 166升级167_27more 修复（向 kpos 库写入数据）..."
     SQL_COMMANDS="
--- 1. 修复 schema_version 记录
 UPDATE schema_version SET success = 1 WHERE version = '1.8.0.471';
-
--- 2. 添加 terminal 表 user_name 字段
-ALTER TABLE \`kpos\`.\`terminal\`
-ADD COLUMN \`user_name\` varchar(128) NULL COMMENT 'worldline username' AFTER \`tablet_version\`;
-
--- 3. 添加 pat_config 表 enabled 字段
-ALTER TABLE \`kpos\`.\`pat_config\`
-ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- not' AFTER \`login_status\`;
+ALTER TABLE \`kpos\`.\`terminal\` ADD COLUMN \`user_name\` varchar(128) NULL COMMENT 'worldline username' AFTER \`tablet_version\`;
+ALTER TABLE \`kpos\`.\`pat_config\` ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- not' AFTER \`login_status\`;
 "
-    echo "$SQL_COMMANDS" | mysql -u root --password='N0mur@4$99!' kpos 2>&1
+    echo "$SQL_COMMANDS" | mysql -u root --password='N0mur@4$99!' --force kpos 2>&1 | grep -v "Duplicate column"
     if [ $? -eq 0 ]; then
         echo ">>> 166升级167_27more 修复完成"
     else
-        echo ">>> 修复过程中出现部分错误（如字段已存在），请检查上方输出。"
+        echo ">>> 修复过程中出现部分错误，请检查上方输出。"
     fi
     read -p "按回车键继续..."
 }
 
-# 2.3 17.2 fast0 补丁
+# 2.3 17.2 fast0
 do_patch_17_2_fast0() {
     echo ">>> 正在执行 17.2 fast0 补丁 ..."
     cd /home/menu || exit
     sudo rm -rf pit
     sudo rm -rf 1.8.0.30.16.7.2-fast-0-PIT-17982
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O pit
-    unzip pit > /dev/null
-    PATCH_DIR=$(ls -d */ 2>/dev/null | grep -v '^pit$' | head -1 | sed 's|/||')
+    unzip pit > /dev/null 2>&1
+    PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
     if [ -z "$PATCH_DIR" ]; then
         echo "无法确定解压后的目录，请检查补丁包。"
         read -p "按回车键继续..."
         return 1
     fi
+    echo "检测到补丁目录: $PATCH_DIR"
     sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    sudo rm -rf pit "$PATCH_DIR"
+    sudo service tomcat restart
     if [ $? -eq 0 ]; then
         echo ">>> 17.2 fast0 补丁完成"
     else
         echo ">>> 17.2 fast0 补丁失败，请检查错误"
     fi
+    sudo rm -rf pit "$PATCH_DIR"
     read -p "按回车键继续..."
 }
 
-# 2.4 16.7.2 fast16 补丁
+# 2.4 16.7.2 fast16
 do_patch_16_7_2_fast16() {
     echo ">>> 正在执行 16.7.2 fast16 补丁 ..."
     cd /home/menu || exit
     sudo rm -rf pit
     sudo rm -rf 1.8.0.30.16.7.2-fast-167-PIT-20035
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0' -O pit
-    unzip pit > /dev/null
-    PATCH_DIR=$(ls -d */ 2>/dev/null | grep -v '^pit$' | head -1 | sed 's|/||')
+    unzip pit > /dev/null 2>&1
+    PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
     if [ -z "$PATCH_DIR" ]; then
         echo "无法确定解压后的目录，请检查补丁包。"
         read -p "按回车键继续..."
         return 1
     fi
+    echo "检测到补丁目录: $PATCH_DIR"
     sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    sudo rm -rf pit "$PATCH_DIR"
+    sudo service tomcat restart
     if [ $? -eq 0 ]; then
         echo ">>> 16.7.2 fast16 补丁完成"
     else
         echo ">>> 16.7.2 fast16 补丁失败，请检查错误"
     fi
+    sudo rm -rf pit "$PATCH_DIR"
     read -p "按回车键继续..."
 }
 
@@ -558,11 +553,8 @@ show_main_menu() {
     echo "网络IP列表："
     show_network_ips
     echo "======================"
-    # 硬件信息
     cpu_model=$(lscpu | grep "Model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
-    if [ -z "$cpu_model" ]; then
-        cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
-    fi
+    [ -z "$cpu_model" ] && cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
     mem_total=$(free -h | grep Mem | awk '{print $2}')
     echo "硬件信息："
     echo "  CPU: $cpu_model"
