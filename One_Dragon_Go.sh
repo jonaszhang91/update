@@ -519,7 +519,7 @@ do_patch_16_7_2_fast16() {
     sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
     sudo rm -rf /home/menu/pit
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0' -O /home/menu/pit
-   sudo unzip -o pit -x "__MACOSX/*" -d /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
+    sudo unzip -o pit -x "__MACOSX/*" -d /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
     sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
     sudo rm -rf /home/menu/pit
     sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
