@@ -453,11 +453,11 @@ do_upgrade_30_14_9() {
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
     cd ~ || exit
-    sudo rm -rf pit
-    sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
+    sudo rm -rf /home/menu/pit
+    sudo rm -rf /home/menu/1.8.0.30.16.6-fast-18-PIT-12780
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1-55kWzmMsctc06FCHlPrbgeQGU6jwS3X' -O pit
-    sudo unzip -o pit -x "__MACOSX/*" -d /home/menu/
-    sudo cp -rf 1.8.0.30.16.6-fast-18-PIT-12780/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    sudo unzip  pit 
+    sudo cp -rf /home/menu/1.8.0.30.16.6-fast-18-PIT-12780/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
     mysql -u root --password='N0mur@4$99!' kpos < 1.8.0.30.16.6-fast-18-PIT-12780/alter_terminal.sql
     mysql -u root --password='N0mur@4$99!' kpos < 1.8.0.30.16.6-fast-18-PIT-12780/0_db.sql
     sudo service tomcat restart
@@ -466,7 +466,7 @@ do_patch_16_6_fast18() {
     else
         echo ">>> 16.6 fast18 补丁失败，请检查错误"
     fi
-    sudo rm -rf pit
+    sudo rm -rf /home/menu/pit
     sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
     read -p "按回车键继续..."
 }
