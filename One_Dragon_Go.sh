@@ -456,7 +456,7 @@ do_patch_16_6_fast18() {
     sudo rm -rf pit
     sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1-55kWzmMsctc06FCHlPrbgeQGU6jwS3X' -O pit
-    unzip pit
+    sudo unzip -o pit -x "__MACOSX/*" -d /home/menu/1.8.0.30.16.6-fast-18-PIT-12780
     sudo cp -rf 1.8.0.30.16.6-fast-18-PIT-12780/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
     mysql -u root --password='N0mur@4$99!' kpos < 1.8.0.30.16.6-fast-18-PIT-12780/alter_terminal.sql
     mysql -u root --password='N0mur@4$99!' kpos < 1.8.0.30.16.6-fast-18-PIT-12780/0_db.sql
