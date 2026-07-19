@@ -503,6 +503,7 @@ do_patch_17_2_fast0() {
     sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
     sudo rm -rf /home/menu/pit
     sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
+    sudo service tomcat restart
     if [ $? -eq 0 ]; then
         echo ">>> 17.2 fast0 补丁完成"
     else
@@ -522,6 +523,7 @@ do_patch_16_7_2_fast16() {
     sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
     sudo rm -rf /home/menu/pit
     sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
+    sudo service tomcat restart
     if [ $? -eq 0 ]; then
         echo ">>> 16.7.2 fast16 补丁完成"
     else
