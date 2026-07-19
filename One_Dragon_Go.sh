@@ -448,30 +448,36 @@ do_upgrade_30_14_9() {
     exec sudo sh POS_update.sh
 }
 
-# ======================== 补丁函数 ========================
+# ======================== 补丁函数（动态检测解压目录，修正路径错误） ========================
 # 2.1 16.6 fast18 补丁
 do_patch_16_6_fast18() {
     echo ">>> 正在执行 16.6 fast18 补丁 ..."
-    cd ~ || exit
-    sudo rm -rf /home/menu/pit
-    sudo rm -rf /home/menu/1.8.0.30.16.6-fast-18-PIT-12780
+    cd /home/menu || exit
+    sudo rm -rf pit
+    sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
     wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1-55kWzmMsctc06FCHlPrbgeQGU6jwS3X' -O pit
-    sudo unzip  pit 
-    sudo cp -rf /home/menu/1.8.0.30.16.6-fast-18-PIT-12780/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    mysql -u root --password='N0mur@4$99!' kpos < 1.8.0.30.16.6-fast-18-PIT-12780/alter_terminal.sql
-    mysql -u root --password='N0mur@4$99!' kpos < 1.8.0.30.16.6-fast-18-PIT-12780/0_db.sql
+    unzip pit > /dev/null
+    # 获取解压出的第一个目录（排除 pit 自身）
+    PATCH_DIR=$(ls -d */ 2>/dev/null | grep -v '^pit$' | head -1 | sed 's|/||')
+    if [ -z "$PATCH_DIR" ]; then
+        echo "无法确定解压后的目录，请检查补丁包。"
+        read -p "按回车键继续..."
+        return 1
+    fi
+    sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    mysql -u root --password='N0mur@4$99!' kpos < "$PATCH_DIR"/alter_terminal.sql
+    mysql -u root --password='N0mur@4$99!' kpos < "$PATCH_DIR"/0_db.sql
     sudo service tomcat restart
     if [ $? -eq 0 ]; then
         echo ">>> 16.6 fast18 补丁完成"
     else
         echo ">>> 16.6 fast18 补丁失败，请检查错误"
     fi
-    sudo rm -rf /home/menu/pit
-    sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
+    sudo rm -rf pit "$PATCH_DIR"
     read -p "按回车键继续..."
 }
 
-# 2.2 166升级167_27more修复
+# 2.2 166升级167_27more修复（SQL，无文件操作）
 do_patch_166_to167_fix() {
     echo ">>> 正在执行 166升级167_27more 修复（向 kpos 库写入数据）..."
     SQL_COMMANDS="
@@ -499,14 +505,18 @@ ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- no
 do_patch_17_2_fast0() {
     echo ">>> 正在执行 17.2 fast0 补丁 ..."
     cd /home/menu || exit
-    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
-    sudo rm -rf /home/menu/pit
-    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O /home/menu/pit
-    sudo unzip -o pit -x "__MACOSX/*" -d /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
-    sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    sudo rm -rf /home/menu/pit
-    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-0-PIT-17982
-    sudo service tomcat restart
+    sudo rm -rf pit
+    sudo rm -rf 1.8.0.30.16.7.2-fast-0-PIT-17982
+    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O pit
+    unzip pit > /dev/null
+    PATCH_DIR=$(ls -d */ 2>/dev/null | grep -v '^pit$' | head -1 | sed 's|/||')
+    if [ -z "$PATCH_DIR" ]; then
+        echo "无法确定解压后的目录，请检查补丁包。"
+        read -p "按回车键继续..."
+        return 1
+    fi
+    sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    sudo rm -rf pit "$PATCH_DIR"
     if [ $? -eq 0 ]; then
         echo ">>> 17.2 fast0 补丁完成"
     else
@@ -515,18 +525,22 @@ do_patch_17_2_fast0() {
     read -p "按回车键继续..."
 }
 
-# ======================== 新增：2.4 16.7.2 fast16 补丁 ========================
+# 2.4 16.7.2 fast16 补丁
 do_patch_16_7_2_fast16() {
     echo ">>> 正在执行 16.7.2 fast16 补丁 ..."
     cd /home/menu || exit
-    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
-    sudo rm -rf /home/menu/pit
-    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0' -O /home/menu/pit
-    sudo unzip -o pit -x "__MACOSX/*" -d /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
-    sudo cp -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    sudo rm -rf /home/menu/pit
-    sudo rm -rf /home/menu/1.8.0.30.16.7.2-fast-167-PIT-20035
-    sudo service tomcat restart
+    sudo rm -rf pit
+    sudo rm -rf 1.8.0.30.16.7.2-fast-167-PIT-20035
+    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0' -O pit
+    unzip pit > /dev/null
+    PATCH_DIR=$(ls -d */ 2>/dev/null | grep -v '^pit$' | head -1 | sed 's|/||')
+    if [ -z "$PATCH_DIR" ]; then
+        echo "无法确定解压后的目录，请检查补丁包。"
+        read -p "按回车键继续..."
+        return 1
+    fi
+    sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    sudo rm -rf pit "$PATCH_DIR"
     if [ $? -eq 0 ]; then
         echo ">>> 16.7.2 fast16 补丁完成"
     else
