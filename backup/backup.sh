@@ -4,7 +4,7 @@
 MYSQL_USER="root"
 MYSQL_PASSWORD='N0mur@4$99!'
 DATABASE_NAME="kpos"
-IMAGES_SOURCE_DIR="/Wisdomount/Menusifu/data/static/images/emenu"
+IMAGES_SOURCE_DIR="/Wisdomount/Menusifu/data/static/images"
 TOMCAT_WEBAPP_DIR="/opt/apache-tomcat-7.0.93/webapps/kpos"
 TOMCAT_LOGS_DIR="/opt/apache-tomcat-7.0.93/logs"
 BACKUP_DIR="/home/menu/backup"
