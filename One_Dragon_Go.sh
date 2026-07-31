@@ -1,5 +1,11 @@
 #!/bin/sh
 
+# ======================== 全局变量 ========================
+DB_USER="root"
+DB_PASS='N0mur@4$99!'
+DB_NAME="kpos"
+MYSQL_CMD="mysql -u$DB_USER --password=$DB_PASS $DB_NAME"
+
 # ======================== 依赖检查 ========================
 check_dependencies() {
     for cmd in wget unzip mysql sudo; do
@@ -123,7 +129,7 @@ scan_port_on_network() {
     if [ "$port" = "10009" ]; then
         echo ""
         echo "========== 扫描结果与数据库PAX设备对比 =========="
-        pax_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, ip_address, model_name FROM device WHERE manufacturer_name = 'PAX' AND ip_address IS NOT NULL AND ip_address != '';" 2>/dev/null)
+        pax_devices=$($MYSQL_CMD -sN -e "SELECT name, ip_address, model_name FROM device WHERE manufacturer_name = 'PAX' AND ip_address IS NOT NULL AND ip_address != '';" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "数据库查询失败，请检查MySQL连接及表结构。"
         else
@@ -187,7 +193,7 @@ scan_port_on_network() {
     elif [ "$port" = "9100" ]; then
         echo ""
         echo "========== 扫描结果与数据库网络打印机对比 =========="
-        printer_devices=$(mysql -u root --password='N0mur@4$99!' kpos -sN -e "SELECT name, interface_value, interface_value FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 AND interface_value IS NOT NULL AND interface_value != '';" 2>/dev/null)
+        printer_devices=$($MYSQL_CMD -sN -e "SELECT name, interface_value, interface_value FROM printer WHERE real_name != 'Display' AND is_network_printer = 1 AND interface_value IS NOT NULL AND interface_value != '';" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "数据库查询失败，请检查MySQL连接及表结构。"
         else
@@ -405,7 +411,7 @@ restart_tomcat() {
 
 # ======================== 升级函数 ========================
 do_upgrade_16_6_fast0() {
-    echo ">>> 正在执行升级 16.6 fast0，菜单将关闭..."
+    echo ">>> 正在执行升级 16.6 fast0 ..."
     cd /home/menu || exit
     rm -f POS_update.sh
     wget -O POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.6/POS_update.sh
@@ -413,7 +419,7 @@ do_upgrade_16_6_fast0() {
 }
 
 do_upgrade_16_7_1_fast0() {
-    echo ">>> 正在执行升级 16.7.1 fast0，菜单将关闭..."
+    echo ">>> 正在执行升级 16.7.1 fast0 ..."
     cd /home/menu || exit
     rm -f POS_update.sh
     wget -O POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.1/POS_update.sh
@@ -421,7 +427,7 @@ do_upgrade_16_7_1_fast0() {
 }
 
 do_upgrade_16_7_2_fast0() {
-    echo ">>> 正在执行升级 16.7.2 fast0，菜单将关闭..."
+    echo ">>> 正在执行升级 16.7.2 fast0 ..."
     cd /home/menu || exit
     rm -f POS_update.sh
     wget -O POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.2/POS_update.sh
@@ -429,7 +435,7 @@ do_upgrade_16_7_2_fast0() {
 }
 
 do_upgrade_30_13() {
-    echo ">>> 正在执行升级 30.13，菜单将关闭..."
+    echo ">>> 正在执行升级 30.13 ..."
     cd /home/menu || exit
     rm -f POS_update.sh
     wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://menusifu.com.cn:29120/18030.13/POS_update.sh
@@ -437,7 +443,7 @@ do_upgrade_30_13() {
 }
 
 do_upgrade_30_14_9() {
-    echo ">>> 正在执行升级 30.14.9，菜单将关闭..."
+    echo ">>> 正在执行升级 30.14.9 ..."
     cd /home/menu || exit
     rm -f POS_update.sh
     wget --user=baol22 --password="1qaz@WSX6788" -O POS_update.sh http://skymenu.menusifu.com.cn:29120/18030.14/POS_update.sh
@@ -445,37 +451,57 @@ do_upgrade_30_14_9() {
 }
 
 # ======================== 补丁函数（动态检测解压目录，忽略SQL重复列错误） ========================
-# 2.1 16.6 fast18
-do_patch_16_6_fast18() {
-    echo ">>> 正在执行 16.6 fast18 补丁 ..."
+# 通用 PIT 文件夹与解压逻辑执行函数
+apply_pit_patch() {
+    patch_name=$1
+    url=$2
+    
+    echo ">>> 正在执行 $patch_name 补丁 ..."
     cd /home/menu || exit
     sudo rm -rf pit
-    sudo rm -rf 1.8.0.30.16.6-fast-18-PIT-12780
-    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1-55kWzmMsctc06FCHlPrbgeQGU6jwS3X' -O pit
+    # 清理历史 PIT 解压目录
+    sudo rm -rf 1.8.0.30.*-PIT-*
+    
+    wget --no-check-certificate "$url" -O pit
     unzip pit > /dev/null 2>&1
-    # 精确查找解压出的目录（匹配 1.8.0.30.*-PIT-* 模式）
+    
     PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
     if [ -z "$PATCH_DIR" ]; then
-        echo "无法确定解压后的目录，请检查补丁包。"
+        echo "无法确定解压后的目录，请检查补丁包或链接格式。"
         read -p "按回车键继续..."
         return 1
     fi
     echo "检测到补丁目录: $PATCH_DIR"
-    sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    # 执行SQL，忽略重复列错误（使用 mysql --force）
-    mysql -u root --password='N0mur@4$99!' --force kpos < "$PATCH_DIR"/alter_terminal.sql 2>/dev/null
-    mysql -u root --password='N0mur@4$99!' --force kpos < "$PATCH_DIR"/0_db.sql 2>/dev/null
+    
+    # 覆盖 kpos 目录
+    if [ -d "$PATCH_DIR/kpos" ]; then
+        sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+    fi
+    
+    # 执行内置 SQL（如果存在）
+    if [ -f "$PATCH_DIR/alter_terminal.sql" ]; then
+        $MYSQL_CMD --force < "$PATCH_DIR"/alter_terminal.sql 2>/dev/null
+    fi
+    if [ -f "$PATCH_DIR/0_db.sql" ]; then
+        $MYSQL_CMD --force < "$PATCH_DIR"/0_db.sql 2>/dev/null
+    fi
+    
     sudo service tomcat restart
     if [ $? -eq 0 ]; then
-        echo ">>> 16.6 fast18 补丁完成"
+        echo ">>> $patch_name 补丁应用完成"
     else
-        echo ">>> 16.6 fast18 补丁部分失败，请检查上方输出。"
+        echo ">>> $patch_name Tomcat 重启失败，请检查服务状态。"
     fi
     sudo rm -rf pit "$PATCH_DIR"
     read -p "按回车键继续..."
 }
 
-# 2.2 166→167 SQL修复（保留原逻辑）
+# 2.1 16.6 fast18
+do_patch_16_6_fast18() {
+    apply_pit_patch "16.6 fast18" 'https://docs.google.com/uc?export=download&id=1-55kWzmMsctc06FCHlPrbgeQGU6jwS3X'
+}
+
+# 2.2 166→167 SQL修复
 do_patch_166_to167_fix() {
     echo ">>> 正在执行 166升级167_27more 修复（向 kpos 库写入数据）..."
     SQL_COMMANDS="
@@ -483,7 +509,7 @@ UPDATE schema_version SET success = 1 WHERE version = '1.8.0.471';
 ALTER TABLE \`kpos\`.\`terminal\` ADD COLUMN \`user_name\` varchar(128) NULL COMMENT 'worldline username' AFTER \`tablet_version\`;
 ALTER TABLE \`kpos\`.\`pat_config\` ADD COLUMN \`enabled\` tinyint(1) NOT NULL DEFAULT 1 COMMENT '1 - enabled; 0- not' AFTER \`login_status\`;
 "
-    echo "$SQL_COMMANDS" | mysql -u root --password='N0mur@4$99!' --force kpos 2>&1 | grep -v "Duplicate column"
+    echo "$SQL_COMMANDS" | $MYSQL_CMD --force 2>&1 | grep -v "Duplicate column"
     if [ $? -eq 0 ]; then
         echo ">>> 166升级167_27more 修复完成"
     else
@@ -494,54 +520,17 @@ ALTER TABLE \`kpos\`.\`pat_config\` ADD COLUMN \`enabled\` tinyint(1) NOT NULL D
 
 # 2.3 17.2 fast0
 do_patch_17_2_fast0() {
-    echo ">>> 正在执行 17.2 fast0 补丁 ..."
-    cd /home/menu || exit
-    sudo rm -rf pit
-    sudo rm -rf 1.8.0.30.16.7.2-fast-0-PIT-17982
-    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE' -O pit
-    unzip pit > /dev/null 2>&1
-    PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
-    if [ -z "$PATCH_DIR" ]; then
-        echo "无法确定解压后的目录，请检查补丁包。"
-        read -p "按回车键继续..."
-        return 1
-    fi
-    echo "检测到补丁目录: $PATCH_DIR"
-    sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    sudo service tomcat restart
-    if [ $? -eq 0 ]; then
-        echo ">>> 17.2 fast0 补丁完成"
-    else
-        echo ">>> 17.2 fast0 补丁失败，请检查错误"
-    fi
-    sudo rm -rf pit "$PATCH_DIR"
-    read -p "按回车键继续..."
+    apply_pit_patch "17.2 fast0" 'https://docs.google.com/uc?export=download&id=1FMq0TiQ3UWAnZfxOAFqTbHgenASFt3nE'
 }
 
 # 2.4 16.7.2 fast16
 do_patch_16_7_2_fast16() {
-    echo ">>> 正在执行 16.7.2 fast16 补丁 ..."
-    cd /home/menu || exit
-    sudo rm -rf pit
-    sudo rm -rf 1.8.0.30.16.7.2-fast-167-PIT-20035
-    wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0' -O pit
-    unzip pit > /dev/null 2>&1
-    PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
-    if [ -z "$PATCH_DIR" ]; then
-        echo "无法确定解压后的目录，请检查补丁包。"
-        read -p "按回车键继续..."
-        return 1
-    fi
-    echo "检测到补丁目录: $PATCH_DIR"
-    sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
-    sudo service tomcat restart
-    if [ $? -eq 0 ]; then
-        echo ">>> 16.7.2 fast16 补丁完成"
-    else
-        echo ">>> 16.7.2 fast16 补丁失败，请检查错误"
-    fi
-    sudo rm -rf pit "$PATCH_DIR"
-    read -p "按回车键继续..."
+    apply_pit_patch "16.7.2 fast16" 'https://docs.google.com/uc?export=download&id=1dpHX3iNOux7or61DfjlJalECGYu2jTY0'
+}
+
+# 2.5 补丁号 221
+do_patch_221() {
+    apply_pit_patch "补丁 221" 'https://docs.google.com/uc?export=download&id=14LcAUANNrVVLZIABcJVgarpn7jQQ6Ue_'
 }
 
 # ======================== 菜单显示 ========================
@@ -569,6 +558,7 @@ show_main_menu() {
 }
 
 show_upgrade_menu() {
+    clear
     echo "======================"
     echo "    升级子菜单"
     echo "======================"
@@ -590,8 +580,9 @@ show_patch_menu() {
     echo "2.2 166升级167_27more修复"
     echo "2.3 17.2 fast0 补丁"
     echo "2.4 16.7.2 fast16 补丁"
+    echo "2.5 补丁号 221"
     echo "0. 返回主菜单"
-    printf "请选择 [0-4]: "
+    printf "请选择 [0-5]: "
 }
 
 show_network_menu() {
@@ -633,6 +624,7 @@ patch_menu_loop() {
             2) do_patch_166_to167_fix ;;
             3) do_patch_17_2_fast0 ;;
             4) do_patch_16_7_2_fast16 ;;
+            5) do_patch_221 ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
