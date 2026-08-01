@@ -1,4 +1,4 @@
-#!/bin/sh
+code = """#!/bin/sh
 
 # ======================== 全局变量 ========================
 DB_USER="root"
@@ -550,6 +550,39 @@ do_patch_221() {
     apply_pit_patch "补丁 221" 'https://docs.google.com/uc?export=download&id=14LcAUANNrVVLZIABcJVgarpn7jQQ6Ue_'
 }
 
+# 2.6 自定义 Google 云盘补丁
+do_patch_custom_gdrive() {
+    echo "=========================================="
+    echo "     自定义 Google 云盘补丁安装"
+    echo "=========================================="
+    read -p "请输入 Google 云盘共享链接或文件 ID: " input_str
+    if [ -z "$input_str" ]; then
+        echo "输入为空，取消操作。"
+        read -p "按回车键继续..."
+        return 0
+    fi
+
+    # 提取 File ID
+    file_id=""
+    if echo "$input_str" | grep -q "id="; then
+        file_id=$(echo "$input_str" | sed -n 's/.*id=\([^&]*\).*/\1/p')
+    elif echo "$input_str" | grep -q "/d/"; then
+        file_id=$(echo "$input_str" | sed -n 's/.*\/d\/\([^\/]*\).*/\1/p')
+    else
+        file_id="$input_str"
+    fi
+
+    if [ -z "$file_id" ]; then
+        echo "错误：未能成功解析出 File ID，请检查输入的链接！"
+        read -p "按回车键继续..."
+        return 1
+    fi
+
+    echo "成功解析 File ID: $file_id"
+    download_url="https://docs.google.com/uc?export=download&id=${file_id}"
+    apply_pit_patch "自定义 (ID: $file_id)" "$download_url"
+}
+
 # ======================== 菜单显示 ========================
 show_main_menu() {
     clear
@@ -599,8 +632,9 @@ show_patch_menu() {
     echo "2.3 17.2 fast0 补丁"
     echo "2.4 16.7.2 fast16 补丁"
     echo "2.5 16.7.2 fast221"
+    echo "2.6 自定义 Google 云盘补丁"
     echo "0. 返回主菜单"
-    printf "请选择 [0-5]: "
+    printf "请选择 [0-6]: "
 }
 
 show_network_menu() {
@@ -644,6 +678,7 @@ patch_menu_loop() {
             3) do_patch_17_2_fast0 ;;
             4) do_patch_16_7_2_fast16 ;;
             5) do_patch_221 ;;
+            6) do_patch_custom_gdrive ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
@@ -688,3 +723,8 @@ main() {
 }
 
 main
+"""
+
+with open("POS_update.sh", "w") as f:
+    f.write(code)
+print("File POS_update.sh created successfully.")
