@@ -19,7 +19,7 @@ check_dependencies() {
 # ======================== 获取所有IPv4地址 ========================
 show_network_ips() {
     if ip -d -o -4 addr show > /dev/null 2>&1; then
-        ip -d -o -4 addr show | grep -v LOOPBACK | grep -v "127.0.0.1" | while read line; do
+        ip -d -o -4 addr show | grep -v LOOPBACK | grep -v "127.0.0.1" | while read -r line; do
             iface=$(echo "$line" | awk '{print $2}')
             ip_addr=$(echo "$line" | awk '{print $4}' | cut -d'/' -f1)
             if echo "$line" | grep -q 'dynamic'; then
@@ -34,10 +34,10 @@ show_network_ips() {
                         ;;
                 esac
             fi
-            echo "  $iface: $ip_addr ($type)"
+            printf "  %s: %s [%s]\n" "$iface" "$ip_addr" "$type"
         done
     else
-        ifconfig | grep -E 'inet ' | grep -v '127.0.0.1' | while read line; do
+        ifconfig | grep -E 'inet ' | grep -v '127.0.0.1' | while read -r line; do
             ip_addr=$(echo "$line" | awk '{print $2}')
             iface=$(echo "$line" | awk '{print $1}')
             case "$iface" in
@@ -48,7 +48,7 @@ show_network_ips() {
                     type="静态IP"
                     ;;
             esac
-            echo "  $iface: $ip_addr ($type)"
+            printf "  %s: %s [%s]\n" "$iface" "$ip_addr" "$type"
         done
     fi
 }
