@@ -458,15 +458,27 @@ apply_pit_patch() {
     
     echo ">>> 正在执行 $patch_name 补丁 ..."
     cd /home/menu || exit
-    sudo rm -rf pit
+    sudo rm -rf pit pit-0
     # 清理历史 PIT 解压目录
     sudo rm -rf 1.8.0.30.*-PIT-*
     
     wget --no-check-certificate "$url" -O pit
-    unzip pit > /dev/null 2>&1
+    unzip -o pit > /dev/null 2>&1
     
+    # 1. 优先查找符合标准的目录 1.8.0.30.*-PIT-*
     PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
+    
+    # 2. 如果没找到，检查是否存在 pit-0 目录
+    if [ -z "$PATCH_DIR" ] && [ -d "pit-0" ]; then
+        PATCH_DIR="pit-0"
+    fi
+
+    # 3. 如果还是没找到，尝试自动抓取除了 pit 以外最新的目录
     if [ -z "$PATCH_DIR" ]; then
+        PATCH_DIR=$(ls -dt */ 2>/dev/null | grep -v '^pit/' | head -1 | sed 's/\///')
+    fi
+    
+    if [ -z "$PATCH_DIR" ] || [ ! -d "$PATCH_DIR" ]; then
         echo "无法确定解压后的目录，请检查补丁包或链接格式。"
         read -p "按回车键继续..."
         return 1
@@ -476,6 +488,11 @@ apply_pit_patch() {
     # 覆盖 kpos 目录
     if [ -d "$PATCH_DIR/kpos" ]; then
         sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+        echo "已成功覆盖 kpos 目录内容。"
+    else
+        # 兼容处理：如果补丁包内没有 kpos 文件夹，直接将补丁目录所有内容覆盖到 kpos
+        sudo cp -rf "$PATCH_DIR"/* /opt/apache-tomcat-7.0.93/webapps/kpos/
+        echo "已将 $PATCH_DIR 内所有文件覆盖至 kpos 目录。"
     fi
     
     # 执行内置 SQL（如果存在）
@@ -492,7 +509,7 @@ apply_pit_patch() {
     else
         echo ">>> $patch_name Tomcat 重启失败，请检查服务状态。"
     fi
-    sudo rm -rf pit "$PATCH_DIR"
+    sudo rm -rf pit pit-0 "$PATCH_DIR"
     read -p "按回车键继续..."
 }
 
@@ -580,7 +597,7 @@ show_patch_menu() {
     echo "2.2 166升级167_27more修复"
     echo "2.3 17.2 fast0 补丁"
     echo "2.4 16.7.2 fast16 补丁"
-    echo "2.5 补丁号 221"
+    echo "2.5 16.7.2 fast221"
     echo "0. 返回主菜单"
     printf "请选择 [0-5]: "
 }

@@ -38,7 +38,6 @@ check_success() {
     fi
 }
 
-# 退出时删除配置文件
 cleanup() {
     if [ -f "$RCLONE_CONFIG_FILE" ]; then
         rm -f "$RCLONE_CONFIG_FILE"
@@ -55,12 +54,12 @@ install_or_update_rclone() {
         local version=$(rclone version --check-normal 2>/dev/null | head -1 | awk '{print $2}')
         info "已安装 rclone，路径: $rclone_path，版本: $version"
         if [[ "$rclone_path" == *"/snap/"* ]]; then
-            warn "检测到 snap 安装的 rclone，该版本可能存在兼容性问题，正在卸载..."
+            warn "检测到 snap 安装的 rclone，正在卸载..."
             sudo snap remove rclone
             if [ $? -eq 0 ]; then
                 info "snap 版 rclone 已卸载"
             else
-                error "卸载 snap 版 rclone 失败，请手动执行 'sudo snap remove rclone' 后重试"
+                error "卸载 snap 版 rclone 失败"
                 exit 1
             fi
         else
@@ -69,14 +68,6 @@ install_or_update_rclone() {
                 info "开始更新 rclone..."
                 sudo -v || { error "需要 sudo 权限更新 rclone"; exit 1; }
                 curl https://rclone.org/install.sh | sudo bash
-                if [ $? -eq 0 ]; then
-                    info "rclone 更新成功"
-                else
-                    error "rclone 更新失败"
-                    exit 1
-                fi
-            else
-                info "跳过 rclone 更新，使用现有版本"
             fi
             return 0
         fi
@@ -84,21 +75,8 @@ install_or_update_rclone() {
     warn "未找到可用的 rclone，正在安装最新版本..."
     sudo -v || { error "需要 sudo 权限安装 rclone"; exit 1; }
     curl https://rclone.org/install.sh | sudo bash
-    if [ $? -eq 0 ]; then
-        info "rclone 安装成功"
-        if command -v rclone &> /dev/null; then
-            info "rclone 已安装至: $(which rclone)"
-        else
-            error "rclone 安装后仍无法找到命令，请检查 PATH"
-            exit 1
-        fi
-    else
-        error "rclone 安装失败"
-        exit 1
-    fi
 }
 
-# ==================== 其他依赖检查 ====================
 check_dependencies() {
     local deps=("mysqldump" "mysql" "tar" "gzip" "zcat" "gunzip" "xz" "bunzip2" "sudo" "curl")
     for cmd in "${deps[@]}"; do
@@ -109,16 +87,13 @@ check_dependencies() {
     done
 }
 
-# ==================== rclone 配置与密码处理 ====================
 setup_rclone() {
     if [ ! -f "$RCLONE_CONFIG_FILE" ]; then
         error "找不到 rclone 配置文件: $RCLONE_CONFIG_FILE"
-        error "请将有效的 rclone.conf 放在脚本同目录下"
         exit 1
     fi
     export RCLONE_CONFIG="$RCLONE_CONFIG_FILE"
     export RCLONE_CONFIG_PASS="$RCLONE_CONFIG_PASS"
-    info "已设置 rclone 配置解密密码"
 
     if ! rclone lsd ${RCLONE_REMOTE}: &>/dev/null; then
         error "rclone 无法连接到 Google Drive，请检查配置文件或密码"
@@ -143,80 +118,58 @@ do_backup() {
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)_$$
 
+    # 1. 备份数据库 (增加编码与完整约束参数)
     if [[ "$backup_db" == "y" || "$backup_db" == "Y" ]]; then
         SQL_FILE="${DATABASE_NAME}_${TIMESTAMP}.sql.gz"
         SQL_LOCAL_PATH="${BACKUP_DIR}/${SQL_FILE}"
         info "正在备份数据库 ${DATABASE_NAME} ..."
         mysqldump -u${MYSQL_USER} -p${MYSQL_PASSWORD} \
-            --single-transaction --quick --triggers --routines \
+            --default-character-set=utf8mb4 \
+            --single-transaction --quick --triggers --routines --events \
             ${DATABASE_NAME} | gzip > ${SQL_LOCAL_PATH}
+            
         if [ $? -eq 0 ] && [ -s ${SQL_LOCAL_PATH} ]; then
             info "数据库备份成功: ${SQL_LOCAL_PATH} ($(du -h ${SQL_LOCAL_PATH} | cut -f1))"
-            info "上传数据库备份到云端..."
             rclone copy "${SQL_LOCAL_PATH}" "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
-            if [ $? -eq 0 ]; then
-                info "数据库备份上传成功"
-            else
-                error "数据库备份上传失败"
-                exit 1
-            fi
         else
             error "数据库备份失败"
             exit 1
         fi
     fi
 
+    # 2. 备份图片 (使用 -P 保存完整路径)
     if [[ "$backup_images" == "y" || "$backup_images" == "Y" ]]; then
         if [ ! -d "${IMAGES_SOURCE_DIR}" ]; then
             warn "图片文件夹 ${IMAGES_SOURCE_DIR} 不存在，跳过备份"
         else
             IMAGES_FILE="images_${TIMESTAMP}.tar.gz"
             IMAGES_LOCAL_PATH="${BACKUP_DIR}/${IMAGES_FILE}"
-            info "正在备份图片文件夹 ${IMAGES_SOURCE_DIR} ..."
-            sudo tar -czf ${IMAGES_LOCAL_PATH} ${IMAGES_SOURCE_DIR}
+            info "正在备份图片文件夹 ..."
+            sudo tar -P -czf ${IMAGES_LOCAL_PATH} ${IMAGES_SOURCE_DIR}
             if [ $? -eq 0 ] && [ -s ${IMAGES_LOCAL_PATH} ]; then
-                info "图片文件夹备份成功: ${IMAGES_LOCAL_PATH} ($(du -h ${IMAGES_LOCAL_PATH} | cut -f1))"
-                info "上传图片备份到云端..."
+                info "图片文件夹备份成功"
                 rclone copy "${IMAGES_LOCAL_PATH}" "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
-                if [ $? -eq 0 ]; then
-                    info "图片备份上传成功"
-                else
-                    warn "图片备份上传失败，请检查网络"
-                fi
-            else
-                warn "图片文件夹备份失败"
-                rm -f ${IMAGES_LOCAL_PATH}
             fi
         fi
     fi
 
+    # 3. 备份 Tomcat webapp
     if [[ "$backup_tomcat" == "y" || "$backup_tomcat" == "Y" ]]; then
         if [ ! -d "${TOMCAT_WEBAPP_DIR}" ]; then
-            warn "Tomcat webapp 文件夹 ${TOMCAT_WEBAPP_DIR} 不存在，跳过备份"
+            warn "Tomcat webapp 文件夹不存在，跳过备份"
         else
             TOMCAT_FILE="kpos_webapp_${TIMESTAMP}.tar.gz"
             TOMCAT_LOCAL_PATH="${BACKUP_DIR}/${TOMCAT_FILE}"
-            info "正在备份 Tomcat webapp 文件夹 ${TOMCAT_WEBAPP_DIR} ..."
-            sudo tar -czf ${TOMCAT_LOCAL_PATH} ${TOMCAT_WEBAPP_DIR}
+            info "正在备份 Tomcat webapp 文件夹 ..."
+            sudo tar -P -czf ${TOMCAT_LOCAL_PATH} ${TOMCAT_WEBAPP_DIR}
             if [ $? -eq 0 ] && [ -s ${TOMCAT_LOCAL_PATH} ]; then
-                info "Tomcat webapp 备份成功: ${TOMCAT_LOCAL_PATH} ($(du -h ${TOMCAT_LOCAL_PATH} | cut -f1))"
-                info "上传 Tomcat webapp 备份到云端..."
+                info "Tomcat webapp 备份成功"
                 rclone copy "${TOMCAT_LOCAL_PATH}" "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
-                if [ $? -eq 0 ]; then
-                    info "Tomcat webapp 备份上传成功"
-                else
-                    warn "Tomcat webapp 备份上传失败，请检查网络"
-                fi
-            else
-                warn "Tomcat webapp 备份失败"
-                rm -f ${TOMCAT_LOCAL_PATH}
             fi
         fi
     fi
 
     info "========== 备份完成 =========="
-    info "本地备份文件保存在: ${BACKUP_DIR}"
-    info "云端备份文件保存在: ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
 }
 
 # ==================== 恢复通用函数 ====================
@@ -224,36 +177,31 @@ restore_database_file() {
     local file_path="$1"
     info "正在恢复数据库从: $(basename "$file_path")"
 
+    # 修复：明确指定字符集与变量设置
+    MYSQL_EXEC="mysql -u${MYSQL_USER} -p${MYSQL_PASSWORD} --default-character-set=utf8mb4 ${DATABASE_NAME}"
+    INIT_CMDS="SET NAMES utf8mb4; SET autocommit=0; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET sql_log_bin=0;"
+
     local file_type
     file_type=$(file -b "$file_path" | grep -oE 'gzip|XZ|bzip2' | head -1)
     
     case "$file_type" in
         gzip)
-            info "检测到 gzip 压缩格式"
-            gunzip -c "$file_path" | mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
-                --init-command="SET autocommit=0; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET sql_log_bin=0;" \
-                "${DATABASE_NAME}"
+            gunzip -c "$file_path" | $MYSQL_EXEC --init-command="$INIT_CMDS"
             ;;
         XZ)
-            info "检测到 XZ 压缩格式"
-            xz -d -c "$file_path" | mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
-                --init-command="SET autocommit=0; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET sql_log_bin=0;" \
-                "${DATABASE_NAME}"
+            xz -d -c "$file_path" | $MYSQL_EXEC --init-command="$INIT_CMDS"
             ;;
         bzip2)
-            info "检测到 bzip2 压缩格式"
-            bunzip2 -c "$file_path" | mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
-                --init-command="SET autocommit=0; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET sql_log_bin=0;" \
-                "${DATABASE_NAME}"
+            bunzip2 -c "$file_path" | $MYSQL_EXEC --init-command="$INIT_CMDS"
             ;;
         *)
-            error "无法识别的压缩格式，尝试直接作为 SQL 文件导入"
-            mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${DATABASE_NAME}" < "$file_path"
+            $MYSQL_EXEC --init-command="$INIT_CMDS" < "$file_path"
             ;;
     esac
 
     if [ $? -eq 0 ]; then
-        info "数据库恢复成功"
+        info "数据库恢复成功，正在刷新 MySQL 权限与配置..."
+        mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" -e "FLUSH PRIVILEGES;"
     else
         error "数据库恢复失败"
         exit 1
@@ -263,9 +211,11 @@ restore_database_file() {
 restore_images_file() {
     local tar_file="$1"
     info "正在恢复图片文件夹到 ${IMAGES_SOURCE_DIR}..."
-    sudo tar -xzvf "$tar_file" -C /
+    sudo tar -P -xzvf "$tar_file" -C /
     if [ $? -eq 0 ]; then
-        info "图片文件夹恢复成功"
+        # 修正权限：赋予全量读写权限，防止 403 / 无法上传图片
+        sudo chmod -R 777 "${IMAGES_SOURCE_DIR}"
+        info "图片文件夹恢复成功，权限已修复"
     else
         warn "图片文件夹恢复失败，请手动检查"
     fi
@@ -273,13 +223,19 @@ restore_images_file() {
 
 restore_tomcat_file() {
     local tar_file="$1"
+    info "正在停止 Tomcat 服务以防止文件写锁冲突..."
+    sudo service tomcat stop 2>/dev/null || sudo systemctl stop tomcat 2>/dev/null
+
     info "正在恢复 Tomcat webapp 文件夹到 ${TOMCAT_WEBAPP_DIR}..."
-    warn "恢复 Tomcat webapp 可能需要重启 Tomcat 服务才能生效"
-    sudo tar -xzvf "$tar_file" -C /
+    sudo tar -P -xzvf "$tar_file" -C /
+    
     if [ $? -eq 0 ]; then
-        info "Tomcat webapp 文件夹恢复成功"
+        # 修正权限：防止 Tomcat 运行账号无法读取资源文件
+        sudo chmod -R 755 "${TOMCAT_WEBAPP_DIR}"
+        info "Tomcat webapp 恢复成功，正在重启 Tomcat 服务..."
+        sudo service tomcat restart 2>/dev/null || sudo systemctl restart tomcat 2>/dev/null
     else
-        warn "Tomcat webapp 文件夹恢复失败，请手动检查"
+        warn "Tomcat webapp 文件夹恢复失败"
     fi
 }
 
@@ -302,117 +258,58 @@ restore_from_local() {
 
     case $type_choice in
         1)
-            if [ ${#sql_files[@]} -eq 0 ]; then
-                error "没有找到数据库备份文件"
-                return
-            fi
-            echo ""
-            warn "可用的数据库备份文件："
+            if [ ${#sql_files[@]} -eq 0 ]; then error "没有找到数据库备份文件"; return; fi
             for i in "${!sql_files[@]}"; do
-                filename=$(basename "${sql_files[$i]}")
-                size=$(du -h "${sql_files[$i]}" | cut -f1)
-                echo "  [$((i+1))] ${filename} (${size})"
+                echo "  [$((i+1))] $(basename "${sql_files[$i]}") ($(du -h "${sql_files[$i]}" | cut -f1))"
             done
             read -p "请选择要恢复的数据库备份 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#sql_files[@]} ]; then
-                selected="${sql_files[$((idx-1))]}"
-                read -p "确认恢复数据库？(y/n): " confirm
-                if [ "$confirm" = "y" ]; then
-                    restore_database_file "$selected"
-                fi
+                restore_database_file "${sql_files[$((idx-1))]}"
             fi
             ;;
         2)
-            if [ ${#images_files[@]} -eq 0 ]; then
-                error "没有找到图片文件夹备份文件"
-                return
-            fi
-            echo ""
-            warn "可用的图片文件夹备份文件："
+            if [ ${#images_files[@]} -eq 0 ]; then error "没有找到图片文件夹备份文件"; return; fi
             for i in "${!images_files[@]}"; do
-                filename=$(basename "${images_files[$i]}")
-                size=$(du -h "${images_files[$i]}" | cut -f1)
-                echo "  [$((i+1))] ${filename} (${size})"
+                echo "  [$((i+1))] $(basename "${images_files[$i]}") ($(du -h "${images_files[$i]}" | cut -f1))"
             done
             read -p "请选择要恢复的图片备份 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#images_files[@]} ]; then
-                selected="${images_files[$((idx-1))]}"
-                read -p "确认恢复图片文件夹？(y/n): " confirm
-                if [ "$confirm" = "y" ]; then
-                    restore_images_file "$selected"
-                fi
+                restore_images_file "${images_files[$((idx-1))]}"
             fi
             ;;
         3)
-            if [ ${#tomcat_files[@]} -eq 0 ]; then
-                error "没有找到 Tomcat webapp 备份文件"
-                return
-            fi
-            echo ""
-            warn "可用的 Tomcat webapp 备份文件："
+            if [ ${#tomcat_files[@]} -eq 0 ]; then error "没有找到 Tomcat webapp 备份文件"; return; fi
             for i in "${!tomcat_files[@]}"; do
-                filename=$(basename "${tomcat_files[$i]}")
-                size=$(du -h "${tomcat_files[$i]}" | cut -f1)
-                echo "  [$((i+1))] ${filename} (${size})"
+                echo "  [$((i+1))] $(basename "${tomcat_files[$i]}") ($(du -h "${tomcat_files[$i]}" | cut -f1))"
             done
             read -p "请选择要恢复的 Tomcat webapp 备份 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#tomcat_files[@]} ]; then
-                selected="${tomcat_files[$((idx-1))]}"
-                read -p "确认恢复 Tomcat webapp 文件夹？(y/n): " confirm
-                if [ "$confirm" = "y" ]; then
-                    restore_tomcat_file "$selected"
-                fi
+                restore_tomcat_file "${tomcat_files[$((idx-1))]}"
             fi
             ;;
         4)
-            if [ ${#sql_files[@]} -gt 0 ]; then
-                echo "最新数据库备份：$(basename "${sql_files[-1]}")"
-                read -p "恢复最新数据库？(y/n): " confirm
-                [ "$confirm" = "y" ] && restore_database_file "${sql_files[-1]}"
-            fi
-            if [ ${#images_files[@]} -gt 0 ]; then
-                echo "最新图片备份：$(basename "${images_files[-1]}")"
-                read -p "恢复最新图片文件夹？(y/n): " confirm
-                [ "$confirm" = "y" ] && restore_images_file "${images_files[-1]}"
-            fi
-            if [ ${#tomcat_files[@]} -gt 0 ]; then
-                echo "最新 Tomcat webapp 备份：$(basename "${tomcat_files[-1]}")"
-                read -p "恢复最新 Tomcat webapp 文件夹？(y/n): " confirm
-                [ "$confirm" = "y" ] && restore_tomcat_file "${tomcat_files[-1]}"
-            fi
+            [ ${#sql_files[@]} -gt 0 ] && restore_database_file "${sql_files[-1]}"
+            [ ${#images_files[@]} -gt 0 ] && restore_images_file "${images_files[-1]}"
+            [ ${#tomcat_files[@]} -gt 0 ] && restore_tomcat_file "${tomcat_files[-1]}"
             ;;
-        *)
-            info "返回主菜单"
-            ;;
+        *) info "返回主菜单" ;;
     esac
 }
 
 # ==================== 从 Google Drive 恢复 ====================
 restore_from_cloud() {
     info "从 Google Drive 获取备份文件列表..."
-
     local remote_files=()
-    while IFS= read -r line; do
-        remote_files+=("$line")
-    done < <(rclone ls "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/" | sort -r)
+    while IFS= read -r line; do remote_files+=("$line"); done < <(rclone ls "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/" | sort -r)
 
-    if [ ${#remote_files[@]} -eq 0 ]; then
-        error "云端没有找到任何备份文件"
-        return 1
-    fi
+    if [ ${#remote_files[@]} -eq 0 ]; then error "云端没有找到任何备份文件"; return 1; fi
 
-    local sql_remote=()
-    local images_remote=()
-    local tomcat_remote=()
+    local sql_remote=() images_remote=() tomcat_remote=()
     for line in "${remote_files[@]}"; do
         filename=$(echo "$line" | awk '{$1=""; print substr($0,2)}')
-        if [[ "$filename" == ${DATABASE_NAME}_*.sql.gz ]]; then
-            sql_remote+=("$line")
-        elif [[ "$filename" == images_*.tar.gz ]]; then
-            images_remote+=("$line")
-        elif [[ "$filename" == kpos_webapp_*.tar.gz ]]; then
-            tomcat_remote+=("$line")
-        fi
+        if [[ "$filename" == ${DATABASE_NAME}_*.sql.gz ]]; then sql_remote+=("$line");
+        elif [[ "$filename" == images_*.tar.gz ]]; then images_remote+=("$line");
+        elif [[ "$filename" == kpos_webapp_*.tar.gz ]]; then tomcat_remote+=("$line"); fi
     done
 
     echo ""
@@ -420,7 +317,7 @@ restore_from_cloud() {
     echo "1) 恢复数据库"
     echo "2) 恢复图片文件夹"
     echo "3) 恢复 Tomcat webapp 文件夹"
-    echo "4) 恢复所有（依次选择）"
+    echo "4) 恢复所有"
     echo "0) 返回主菜单"
     read -p "请选择 [0-4]: " type_choice
 
@@ -429,115 +326,59 @@ restore_from_cloud() {
 
     case $type_choice in
         1)
-            if [ ${#sql_remote[@]} -eq 0 ]; then
-                error "云端没有找到数据库备份文件"
-                return
-            fi
-            echo ""
-            warn "可用的云端数据库备份文件："
+            if [ ${#sql_remote[@]} -eq 0 ]; then error "云端没有找到数据库备份文件"; return; fi
             for i in "${!sql_remote[@]}"; do
-                filename=$(echo "${sql_remote[$i]}" | awk '{$1=""; print substr($0,2)}')
-                size=$(echo "${sql_remote[$i]}" | awk '{print $1}')
-                echo "  [$((i+1))] ${filename} (${size} bytes)"
+                echo "  [$((i+1))] $(echo "${sql_remote[$i]}" | awk '{$1=""; print substr($0,2)}')"
             done
-            read -p "请选择要恢复的数据库备份 [序号]: " idx
+            read -p "请选择 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#sql_remote[@]} ]; then
-                selected_line="${sql_remote[$((idx-1))]}"
-                remote_filename=$(echo "$selected_line" | awk '{$1=""; print substr($0,2)}')
-                local_file="${temp_dir}/${remote_filename}"
-                info "下载 ${remote_filename} ..."
+                remote_filename=$(echo "${sql_remote[$((idx-1))]}" | awk '{$1=""; print substr($0,2)}')
                 rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
-                if [ -f "$local_file" ]; then
-                    read -p "确认恢复数据库？(y/n): " confirm
-                    [ "$confirm" = "y" ] && restore_database_file "$local_file"
-                else
-                    error "下载失败"
-                fi
+                restore_database_file "${temp_dir}/${remote_filename}"
             fi
             ;;
         2)
-            if [ ${#images_remote[@]} -eq 0 ]; then
-                error "云端没有找到图片文件夹备份文件"
-                return
-            fi
-            echo ""
-            warn "可用的云端图片文件夹备份文件："
+            if [ ${#images_remote[@]} -eq 0 ]; then error "云端没有找到图片备份文件"; return; fi
             for i in "${!images_remote[@]}"; do
-                filename=$(echo "${images_remote[$i]}" | awk '{$1=""; print substr($0,2)}')
-                size=$(echo "${images_remote[$i]}" | awk '{print $1}')
-                echo "  [$((i+1))] ${filename} (${size} bytes)"
+                echo "  [$((i+1))] $(echo "${images_remote[$i]}" | awk '{$1=""; print substr($0,2)}')"
             done
-            read -p "请选择要恢复的图片备份 [序号]: " idx
+            read -p "请选择 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#images_remote[@]} ]; then
-                selected_line="${images_remote[$((idx-1))]}"
-                remote_filename=$(echo "$selected_line" | awk '{$1=""; print substr($0,2)}')
-                local_file="${temp_dir}/${remote_filename}"
-                info "下载 ${remote_filename} ..."
+                remote_filename=$(echo "${images_remote[$((idx-1))]}" | awk '{$1=""; print substr($0,2)}')
                 rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
-                if [ -f "$local_file" ]; then
-                    read -p "确认恢复图片文件夹？(y/n): " confirm
-                    [ "$confirm" = "y" ] && restore_images_file "$local_file"
-                else
-                    error "下载失败"
-                fi
+                restore_images_file "${temp_dir}/${remote_filename}"
             fi
             ;;
         3)
-            if [ ${#tomcat_remote[@]} -eq 0 ]; then
-                error "云端没有找到 Tomcat webapp 备份文件"
-                return
-            fi
-            echo ""
-            warn "可用的云端 Tomcat webapp 备份文件："
+            if [ ${#tomcat_remote[@]} -eq 0 ]; then error "云端没有找到 Tomcat 备份文件"; return; fi
             for i in "${!tomcat_remote[@]}"; do
-                filename=$(echo "${tomcat_remote[$i]}" | awk '{$1=""; print substr($0,2)}')
-                size=$(echo "${tomcat_remote[$i]}" | awk '{print $1}')
-                echo "  [$((i+1))] ${filename} (${size} bytes)"
+                echo "  [$((i+1))] $(echo "${tomcat_remote[$i]}" | awk '{$1=""; print substr($0,2)}')"
             done
-            read -p "请选择要恢复的 Tomcat webapp 备份 [序号]: " idx
+            read -p "请选择 [序号]: " idx
             if [[ $idx =~ ^[0-9]+$ ]] && [ $idx -ge 1 ] && [ $idx -le ${#tomcat_remote[@]} ]; then
-                selected_line="${tomcat_remote[$((idx-1))]}"
-                remote_filename=$(echo "$selected_line" | awk '{$1=""; print substr($0,2)}')
-                local_file="${temp_dir}/${remote_filename}"
-                info "下载 ${remote_filename} ..."
+                remote_filename=$(echo "${tomcat_remote[$((idx-1))]}" | awk '{$1=""; print substr($0,2)}')
                 rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${remote_filename}" "$temp_dir/"
-                if [ -f "$local_file" ]; then
-                    read -p "确认恢复 Tomcat webapp 文件夹？(y/n): " confirm
-                    [ "$confirm" = "y" ] && restore_tomcat_file "$local_file"
-                else
-                    error "下载失败"
-                fi
+                restore_tomcat_file "${temp_dir}/${remote_filename}"
             fi
             ;;
         4)
             if [ ${#sql_remote[@]} -gt 0 ]; then
                 latest=$(echo "${sql_remote[0]}" | awk '{$1=""; print substr($0,2)}')
-                read -p "恢复最新数据库备份 ${latest} ? (y/n): " confirm
-                if [ "$confirm" = "y" ]; then
-                    rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
-                    restore_database_file "${temp_dir}/${latest}"
-                fi
+                rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
+                restore_database_file "${temp_dir}/${latest}"
             fi
             if [ ${#images_remote[@]} -gt 0 ]; then
                 latest=$(echo "${images_remote[0]}" | awk '{$1=""; print substr($0,2)}')
-                read -p "恢复最新图片备份 ${latest} ? (y/n): " confirm
-                if [ "$confirm" = "y" ]; then
-                    rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
-                    restore_images_file "${temp_dir}/${latest}"
-                fi
+                rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
+                restore_images_file "${temp_dir}/${latest}"
             fi
             if [ ${#tomcat_remote[@]} -gt 0 ]; then
                 latest=$(echo "${tomcat_remote[0]}" | awk '{$1=""; print substr($0,2)}')
-                read -p "恢复最新 Tomcat webapp 备份 ${latest} ? (y/n): " confirm
-                if [ "$confirm" = "y" ]; then
-                    rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
-                    restore_tomcat_file "${temp_dir}/${latest}"
-                fi
+                rclone copy "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/${latest}" "$temp_dir/"
+                restore_tomcat_file "${temp_dir}/${latest}"
             fi
             ;;
-        *)
-            info "返回主菜单"
-            ;;
+        *) info "返回主菜单" ;;
     esac
 
     rm -rf "$temp_dir"
@@ -567,100 +408,40 @@ upload_logs() {
     info "查找文件: $pattern"
     
     mapfile -t log_files < <(find "$log_dir" -maxdepth 1 -type f -name "$pattern" | sort)
-    
-    if [ ${#log_files[@]} -eq 0 ]; then
-        warn "在 $log_dir 中没有找到匹配的日志文件: $pattern"
-    else
-        echo ""
-        info "找到 ${#log_files[@]} 个日志文件："
-        for f in "${log_files[@]}"; do
-            echo "  $(basename "$f")"
-        done
-    fi
 
-    include_appserver="n"
     if [ -f "${TOMCAT_LOGS_DIR}/appserver.log" ]; then
         read -p "是否同时包含当前的 appserver.log 文件？(y/n，默认 n): " include_appserver
         include_appserver=${include_appserver:-n}
-    else
-        warn "根目录下未找到 appserver.log 文件，将跳过"
-    fi
-
-    total_files=${#log_files[@]}
-    if [ "$include_appserver" = "y" ] || [ "$include_appserver" = "Y" ]; then
-        total_files=$((total_files + 1))
-    fi
-
-    if [ $total_files -eq 0 ]; then
-        error "没有找到任何可打包的日志文件"
-        return 1
-    fi
-
-    read -p "是否打包并上传这些日志文件？(y/n): " confirm
-    if [ "$confirm" != "y" ]; then
-        info "取消上传"
-        return
     fi
 
     local temp_work_dir="/tmp/kpos_logs_$$"
     mkdir -p "$temp_work_dir"
 
-    for f in "${log_files[@]}"; do
-        cp "$f" "$temp_work_dir/"
-    done
+    for f in "${log_files[@]}"; do cp "$f" "$temp_work_dir/"; done
     if [ "$include_appserver" = "y" ] || [ "$include_appserver" = "Y" ]; then
         cp "${TOMCAT_LOGS_DIR}/appserver.log" "$temp_work_dir/"
     fi
 
     local archive_name="logs_${year}-${month}-${day}.tar.gz"
     local archive_path="${BACKUP_DIR}/${archive_name}"
-    info "正在打包日志文件到 ${archive_path} ..."
     pushd "$temp_work_dir" > /dev/null
     tar -czf "$archive_path" *
     popd > /dev/null
-    if [ $? -eq 0 ] && [ -s "$archive_path" ]; then
-        info "打包成功: $archive_path ($(du -h "$archive_path" | cut -f1))"
-    else
-        error "打包失败"
-        rm -rf "$temp_work_dir"
-        return 1
-    fi
 
     rm -rf "$temp_work_dir"
 
     info "上传到 ${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/ ..."
     rclone copy "$archive_path" "${RCLONE_REMOTE}:${RCLONE_BACKUP_DIR}/"
-    if [ $? -eq 0 ]; then
-        info "日志文件上传成功"
-    else
-        error "上传失败"
-        return 1
-    fi
-
-    read -p "是否删除本地压缩包 ${archive_path}？(y/n): " del_choice
-    if [ "$del_choice" = "y" ]; then
-        rm -f "$archive_path"
-        info "已删除本地压缩包"
-    else
-        info "本地压缩包保留在: $archive_path"
-    fi
-
     info "========== 日志上传完成 =========="
 }
 
-# ==================== 新增：升级工具脚本 ====================
 upgrade_script() {
     info "开始升级工具脚本 (One_Dragon_Go.sh)..."
     cd ~ || { error "无法切换到 home 目录"; return 1; }
     rm -f /home/menu/One_Dragon_Go.sh
-    info "下载 One_Dragon_Go.sh ..."
     wget https://github.com/jonaszhang91/update/raw/refs/heads/main/One_Dragon_Go.sh
     check_success "下载 One_Dragon_Go.sh"
-    info "执行升级脚本..."
     sudo bash /home/menu/One_Dragon_Go.sh
-    check_success "执行升级脚本"
-    info "升级工具脚本完成"
-    read -p "按回车返回主菜单..."
 }
 
 # ==================== 主菜单 ====================
