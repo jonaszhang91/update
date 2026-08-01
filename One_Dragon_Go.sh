@@ -559,7 +559,6 @@ do_patch_221() {
     apply_pit_patch "补丁 221" 'https://docs.google.com/uc?export=download&id=14LcAUANNrVVLZIABcJVgarpn7jQQ6Ue_'
 }
 
-# 2.6 自定义 Google 云盘补丁
 do_patch_custom_gdrive() {
     echo "=========================================="
     echo "     自定义 Google 云盘补丁安装"
@@ -574,12 +573,15 @@ do_patch_custom_gdrive() {
     # 提取 File ID
     file_id=""
     if echo "$input_str" | grep -q "id="; then
-        file_id=$(echo "$input_str" | sed -n 's/.*id=\([^&]*\).*//p')
+        file_id=$(echo "$input_str" | sed -n 's/.*id=\([^&]*\).*/\1/p')
     elif echo "$input_str" | grep -q "/d/"; then
-        file_id=$(echo "$input_str" | sed -n 's/.*\/d\/\([^\/]*\).*//p')
+        file_id=$(echo "$input_str" | sed -n 's/.*\/d\/\([^\/]*\).*/\1/p')
     else
         file_id="$input_str"
     fi
+
+    # 核心修复：只保留合法字符（字母、数字、下划线、短横线），剔除控制字符及空格
+    file_id=$(echo "$file_id" | tr -cd 'a-zA-Z0-9_-')
 
     if [ -z "$file_id" ]; then
         echo "错误：未能成功解析出 File ID，请检查输入的链接！"
