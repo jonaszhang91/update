@@ -434,6 +434,14 @@ do_upgrade_16_7_2_fast0() {
     exec sudo sh POS_update.sh
 }
 
+do_upgrade_16_7_3() {
+    echo ">>> 正在执行升级 16.7.3 ..."
+    cd /home/menu || exit
+    rm -f POS_update.sh
+    wget -O POS_update.sh https://github.com/jonaszhang91/update/raw/refs/heads/main/16.7.3/POS_update.sh
+    exec sudo sh POS_update.sh
+}
+
 do_upgrade_30_13() {
     echo ">>> 正在执行升级 30.13 ..."
     cd /home/menu || exit
@@ -451,7 +459,6 @@ do_upgrade_30_14_9() {
 }
 
 # ======================== 补丁函数（动态检测解压目录，忽略SQL重复列错误） ========================
-# 通用 PIT 文件夹与解压逻辑执行函数
 apply_pit_patch() {
     patch_name=$1
     url=$2
@@ -459,21 +466,17 @@ apply_pit_patch() {
     echo ">>> 正在执行 $patch_name 补丁 ..."
     cd /home/menu || exit
     sudo rm -rf pit pit-0
-    # 清理历史 PIT 解压目录
     sudo rm -rf 1.8.0.30.*-PIT-*
     
     wget --no-check-certificate "$url" -O pit
     unzip -o pit > /dev/null 2>&1
     
-    # 1. 优先查找符合标准的目录 1.8.0.30.*-PIT-*
     PATCH_DIR=$(ls -d 1.8.0.30.*-PIT-* 2>/dev/null | head -1)
     
-    # 2. 如果没找到，检查是否存在 pit-0 目录
     if [ -z "$PATCH_DIR" ] && [ -d "pit-0" ]; then
         PATCH_DIR="pit-0"
     fi
 
-    # 3. 如果还是没找到，尝试自动抓取除了 pit 以外最新的目录
     if [ -z "$PATCH_DIR" ]; then
         PATCH_DIR=$(ls -dt */ 2>/dev/null | grep -v '^pit/' | head -1 | sed 's/\///')
     fi
@@ -485,17 +488,14 @@ apply_pit_patch() {
     fi
     echo "检测到补丁目录: $PATCH_DIR"
     
-    # 覆盖 kpos 目录
     if [ -d "$PATCH_DIR/kpos" ]; then
         sudo cp -rf "$PATCH_DIR"/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/
         echo "已成功覆盖 kpos 目录内容。"
     else
-        # 兼容处理：如果补丁包内没有 kpos 文件夹，直接将补丁目录所有内容覆盖到 kpos
         sudo cp -rf "$PATCH_DIR"/* /opt/apache-tomcat-7.0.93/webapps/kpos/
         echo "已将 $PATCH_DIR 内所有文件覆盖至 kpos 目录。"
     fi
     
-    # 执行内置 SQL（如果存在）
     if [ -f "$PATCH_DIR/alter_terminal.sql" ]; then
         $MYSQL_CMD --force < "$PATCH_DIR"/alter_terminal.sql 2>/dev/null
     fi
@@ -582,10 +582,11 @@ show_upgrade_menu() {
     echo "1.1 升级 16.6 fast0"
     echo "1.2 升级 16.7.1 fast0"
     echo "1.3 升级 16.7.2 fast0"
-    echo "1.4 升级 30.13"
-    echo "1.5 升级 30.14.9"
+    echo "1.4 升级 16.7.3"
+    echo "1.5 升级 30.13"
+    echo "1.6 升级 30.14.9"
     echo "0. 返回主菜单"
-    printf "请选择 [0-5]: "
+    printf "请选择 [0-6]: "
 }
 
 show_patch_menu() {
@@ -624,8 +625,9 @@ upgrade_menu_loop() {
             1) do_upgrade_16_6_fast0 ;;
             2) do_upgrade_16_7_1_fast0 ;;
             3) do_upgrade_16_7_2_fast0 ;;
-            4) do_upgrade_30_13 ;;
-            5) do_upgrade_30_14_9 ;;
+            4) do_upgrade_16_7_3 ;;
+            5) do_upgrade_30_13 ;;
+            6) do_upgrade_30_14_9 ;;
             0) echo "返回主菜单..."; sleep 1; break ;;
             *) echo "无效输入，请重新选择！"; sleep 1 ;;
         esac
