@@ -81,7 +81,7 @@ scan_port_on_network() {
     description=$2
     
     if ! command -v nmap > /dev/null 2>&1; then
-        echo "nmap 未安装，是否安装？(y/n): "
+        echo "nmap 未安装，是否安装 [y/n]: "
         read install_nmap
         if [ "$install_nmap" = "y" ] || [ "$install_nmap" = "Y" ]; then
             sudo apt update && sudo apt install nmap -y
