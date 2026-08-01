@@ -1,4 +1,4 @@
-script_content = """#!/bin/sh
+#!/bin/sh
 
 # ======================== 全局变量 ========================
 DB_USER="root"
@@ -34,7 +34,8 @@ show_network_ips() {
                         ;;
                 esac
             fi
-            printf "  %s: %s [%s]\n" "$iface" "$ip_addr" "$type"
+            printf "  %s: %s [%s]
+" "$iface" "$ip_addr" "$type"
         done
     else
         ifconfig | grep -E 'inet ' | grep -v '127.0.0.1' | while read -r line; do
@@ -48,7 +49,8 @@ show_network_ips() {
                     type="静态IP"
                     ;;
             esac
-            printf "  %s: %s [%s]\n" "$iface" "$ip_addr" "$type"
+            printf "  %s: %s [%s]
+" "$iface" "$ip_addr" "$type"
         done
     fi
 }
@@ -134,7 +136,7 @@ scan_port_on_network() {
             echo "数据库查询失败，请检查MySQL连接及表结构。"
         else
             tmp_file_db="/tmp/pax_devices_$$.tmp"
-            echo "$pax_devices" | while IFS=$'\t' read name ip model; do
+            echo "$pax_devices" | while IFS=$'	' read name ip model; do
                 echo "$ip|$name|$model" >> "$tmp_file_db"
             done
             if [ -f "$tmp_file_db" ]; then
@@ -198,7 +200,7 @@ scan_port_on_network() {
             echo "数据库查询失败，请检查MySQL连接及表结构。"
         else
             tmp_file_db="/tmp/printer_devices_$$.tmp"
-            echo "$printer_devices" | while IFS=$'\t' read name ip interface; do
+            echo "$printer_devices" | while IFS=$'	' read name ip interface; do
                 echo "$ip|$name|$interface" >> "$tmp_file_db"
             done
             if [ -f "$tmp_file_db" ]; then
@@ -310,7 +312,7 @@ add_network_segment() {
                 ABS_ADDR_LINE=$((START_LINE + ADDR_LINE - 1))
                 ADDR_CONTENT=$(sed -n "${ABS_ADDR_LINE}p" "$NETPLAN_FILE" | sed 's/.*addresses:\s*//')
                 if echo "$ADDR_CONTENT" | grep -q '^\[.*\]$'; then
-                    EXISTING_IPS=$(echo "$ADDR_CONTENT" | sed 's/\[\(.*\)\]/\1/' | sed 's/ //g')
+                    EXISTING_IPS=$(echo "$ADDR_CONTENT" | sed 's/\[\(.*\)\]//' | sed 's/ //g')
                     if [ -n "$EXISTING_IPS" ]; then
                         NEW_LIST="[$EXISTING_IPS, $NEW_IP]"
                     else
@@ -330,13 +332,20 @@ add_network_segment() {
                 DHCP_LINE=$(sed -n "${START_LINE},/^\s*[a-z]/p" "$NETPLAN_FILE" | grep -n "dhcp4:" | head -n1 | cut -d: -f1)
                 if [ -n "$DHCP_LINE" ]; then
                     ABS_DHCP_LINE=$((START_LINE + DHCP_LINE - 1))
-                    sudo sed -i "${ABS_DHCP_LINE}a\      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
+                    sudo sed -i "${ABS_DHCP_LINE}a\      addresses:
+        - $NEW_IP" "$NETPLAN_FILE"
                 else
-                    sudo sed -i "${START_LINE}a\      dhcp4: true\n      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
+                    sudo sed -i "${START_LINE}a\      dhcp4: true
+      addresses:
+        - $NEW_IP" "$NETPLAN_FILE"
                 fi
             fi
         else
-            sudo sed -i "/^network:/a\  ethernets:\n    $INTERFACE:\n      dhcp4: true\n      addresses:\n        - $NEW_IP" "$NETPLAN_FILE"
+            sudo sed -i "/^network:/a\  ethernets:
+    $INTERFACE:
+      dhcp4: true
+      addresses:
+        - $NEW_IP" "$NETPLAN_FILE"
         fi
     else
         sudo mkdir -p /etc/netplan
@@ -565,9 +574,9 @@ do_patch_custom_gdrive() {
     # 提取 File ID
     file_id=""
     if echo "$input_str" | grep -q "id="; then
-        file_id=$(echo "$input_str" | sed -n 's/.*id=\([^&]*\).*/\1/p')
+        file_id=$(echo "$input_str" | sed -n 's/.*id=\([^&]*\).*//p')
     elif echo "$input_str" | grep -q "/d/"; then
-        file_id=$(echo "$input_str" | sed -n 's/.*\/d\/\([^\/]*\).*/\1/p')
+        file_id=$(echo "$input_str" | sed -n 's/.*\/d\/\([^\/]*\).*//p')
     else
         file_id="$input_str"
     fi
@@ -592,8 +601,8 @@ show_main_menu() {
     echo "网络IP列表："
     show_network_ips
     echo "======================"
-    cpu_model=$(lscpu | grep "Model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
-    [ -z "$cpu_model" ] && cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | sed 's/^[ \t]*//')
+    cpu_model=$(lscpu | grep "Model name" | head -1 | cut -d':' -f2 | sed 's/^[ 	]*//')
+    [ -z "$cpu_model" ] && cpu_model=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d':' -f2 | sed 's/^[ 	]*//')
     mem_total=$(free -h | grep Mem | awk '{print $2}')
     echo "硬件信息："
     echo "  CPU: $cpu_model"
@@ -723,9 +732,3 @@ main() {
 }
 
 main
-"""
-
-with open("POS_update.sh", "w", encoding="utf-8") as f:
-    f.write(script_content)
-
-print("File created successfully!")
