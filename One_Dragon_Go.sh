@@ -1,4 +1,4 @@
-code = """#!/bin/sh
+script_content = """#!/bin/sh
 
 # ======================== 全局变量 ========================
 DB_USER="root"
@@ -725,6 +725,7 @@ main() {
 main
 """
 
-with open("POS_update.sh", "w") as f:
-    f.write(code)
-print("File POS_update.sh created successfully.")
+with open("POS_update.sh", "w", encoding="utf-8") as f:
+    f.write(script_content)
+
+print("File created successfully!")
