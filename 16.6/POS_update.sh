@@ -371,6 +371,8 @@ wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1bUuO
 unzip /home/menu/pit 
 sudo cp -rf /home/menu/1.8.0.30.16.6-fast-0-PIT-12443/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
 mysql -u root --password='N0mur@4$99!' kpos < /home/menu/1.8.0.30.16.6-fast-0-PIT-12443/0_db.sql 
+sudo rm -f /home/menu/pit
+sudo rm -rf /home/menu/1.8.0.30.16.6-fast-0-PIT-12443
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""

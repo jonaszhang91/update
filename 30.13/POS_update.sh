@@ -359,6 +359,7 @@ echo "\033[33m +--------------------------------------------------------------+\
 
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
+
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""

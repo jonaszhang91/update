@@ -1,11 +1,11 @@
 #!/bin/bash
   
 # 脚本维护人员   星星叫
-# 脚本更新时间   2026-01-25
+# 脚本更新时间   2026-07-21
 # 脚本适用环境   Ubuntu 18.04/22.04
-# 升级脚本编号   18030.16.7.1
+# 升级脚本编号   18030.16.7.3
 
-SHELL_VERSION='18030.16.7.1'
+SHELL_VERSION='18030.16.7.3'
 
 UBUNTU_MODE=$(ps -ef | grep desktop | grep -v grep | wc -l)
 
@@ -23,15 +23,15 @@ FREEDISK=$(df -h | grep -w / | awk -F " " '{print $(NF-2)}'| cut -c1-2 | tr -d '
 
 #------------------------------------------------------
 
-UPDATE_ID="1BVjd3VRYcDQnopmDreYFU3Bd3zz3kQ7x"
+UPDATE_ID="1J5jcfL3juvCVU30u8w8WH-9nM4whSPlO"
 
-UPDATE_MD5='2bdefeeeba708c0a67efe3b2cbb686b4'
+UPDATE_MD5='10d96bc430fb97678f30e8bdd26ec7e9'
 
 #------------------------------------------------------
 
-KPOS_ID="1-EKyOyVkhCG4ewEJxTgmf2pkG8mY8tEM"
+KPOS_ID="1loCMyHTcTgw7WF0xUVibY-jBN-cLnBht"
 
-KPOS_MD5='aefdfc3f16f86b89e7caa17f93f7ac87'
+KPOS_MD5='bd069fdbb01f24356d1985a9bac8d178'
 
 ######################################################
 update_316 (){
@@ -148,7 +148,6 @@ else
 fi
 
 ####################################以下为升级脚本####################################
-
 #!/bin/bash
 
 SUDO='sudo'
@@ -157,9 +156,9 @@ UPDATE_FILE_PACKAGE=menusifu_magic_update.tar.gz
 UPDATE_FILE=menusifu_magic_update
 VERSION_DIR=/home/menu/.menusifu/POS/data/version
 UNTAR=${SUDO}' tar zxf'
-NEW_UPDATE_POS_VERSION="1.8.0.30.16.7.1"
+NEW_UPDATE_POS_VERSION="1.8.0.30.16.7.3"
 LAST_UPDATE_POS_VERSION=""
-NEW_UPDATE_SHELL_VERSION=30
+NEW_UPDATE_SHELL_VERSION=31
 LAST_UPDATE_SHELL_VERSION=0
 IS_LUBUNTU=0
 WAR_DIR=/opt/tomcat7/webapps
@@ -369,6 +368,8 @@ fi
 
 $SUDO systemctl start tomcat
 $SUDO rm -rf $UPDATE_FILE
+echo "\033[32m ################### update kpos.war complete! ################## \033[0m"
+
 
 ####################################以上为升级脚本####################################
 
@@ -392,12 +393,12 @@ echo "\033[33m +--------------------------------------------------------------+\
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
 sudo rm -rf /home/menu/pit
-sudo rm -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381
-wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=1ZsAQctnQ8tthSud1TV8JtDopDcpH0yu3' -O /home/menu/pit 
+sudo rm -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531
+wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=13XlA7g0X2zeypazmz66zsEtj69xslLSb' -O /home/menu/pit 
 unzip /home/menu/pit 
-sudo cp -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
+sudo cp -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
 sudo rm -rf /home/menu/pit
-sudo rm -rf /home/menu/1.8.0.30.16.7.1-fast-0-PIT-15381
+sudo rm -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531
 sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
@@ -545,10 +546,10 @@ else
 	echo "\033[33m |                   POS模式---$POS_MODE                     |\033[0m"
 fi
 echo "\033[33m |                                                        |\033[0m" 
-echo "\033[33m | 1：升级 POS $SHELL_VERSION                               |\033[0m"
-echo "\033[33m | 2: 升级 E-Menu 最新版本                                |\033[0m"
-echo "\033[33m | 3: 升级 Kiosk  最新版本                                |\033[0m"
-echo "\033[33m | 4: 升级 Datahub 最新版本                               |\033[0m"                            
+echo "\033[33m | 1：升级 POS $SHELL_VERSION                             |\033[0m"
+echo "\033[33m | 2: 升级 E-Menu                                         |\033[0m"
+echo "\033[33m | 3: 升级 Kiosk                                          |\033[0m"
+echo "\033[33m | 4: 升级 Datahub                                        |\033[0m"                            
 echo "\033[33m |                                                        |\033[0m"
 echo "\033[33m | 0: 退出程序                                            |\033[0m"
 echo "\033[33m |                                                        |\033[0m"
@@ -600,7 +601,7 @@ elif [ "$answer" = "4" ]
 
 DATEHUB_MD5=`md5sum cloudDatahub.war|cut -d ' ' -f1`
 
-	if [ "$DATEHUB_MD5" = "1b6ae0e2a30fc23fcb5fe6fedf0c320b" ];then
+	if [ "$DATEHUB_MD5" = "48a19e56f8883d403ce453a63a1bb9c9" ];then
 
 	echo "\033[33m +------------------------------------------------------+\033[0m" 
 	echo "\033[33m |             CloudDatahub.war文件完整                 |\033[0m" 
