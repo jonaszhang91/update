@@ -126,14 +126,15 @@ do_backup() {
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)_$$
 
-    # 1. 备份数据库 (增加开启管道错误捕获 + 优化参数)
+    # 1. 备份数据库 (使用 MYSQL_PWD 传递密码，免疫特殊字符)
     if [[ "$backup_db" == "y" || "$backup_db" == "Y" ]]; then
         SQL_FILE="${DATABASE_NAME}_${TIMESTAMP}.sql.gz"
         SQL_LOCAL_PATH="${BACKUP_DIR}/${SQL_FILE}"
         info "正在备份数据库 ${DATABASE_NAME} ..."
         
+        export MYSQL_PWD="${MYSQL_PASSWORD}"
         set -o pipefail
-        mysqldump -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" \
+        mysqldump -u"${MYSQL_USER}" \
             --default-character-set=utf8mb4 \
             --single-transaction \
             --quick \
@@ -142,6 +143,7 @@ do_backup() {
             "${DATABASE_NAME}" | gzip > "${SQL_LOCAL_PATH}"
         local dump_status=$?
         set +o pipefail
+        unset MYSQL_PWD
 
         if [ $dump_status -eq 0 ] && [ -s "${SQL_LOCAL_PATH}" ]; then
             info "数据库备份成功: ${SQL_LOCAL_PATH} ($(du -h "${SQL_LOCAL_PATH}" | cut -f1))"
@@ -193,11 +195,13 @@ restore_database_file() {
     local file_path="$1"
     info "正在恢复数据库从: $(basename "$file_path")"
 
-    # 关键修复 1：恢复前强制停止 Tomcat，断开所有长连接与锁
+    # 1. 恢复前强制停止 Tomcat，断开连接与写锁
     stop_tomcat
 
-    # 关键修复 2：开启 autocommit=1 并引用双引号保护密码
-    MYSQL_EXEC="mysql -u\"${MYSQL_USER}\" -p\"${MYSQL_PASSWORD}\" --default-character-set=utf8mb4 ${DATABASE_NAME}"
+    # 2. 使用环境变量 MYSQL_PWD 传递密码，完美解决引号转义报错
+    export MYSQL_PWD="${MYSQL_PASSWORD}"
+    
+    MYSQL_EXEC="mysql -u${MYSQL_USER} --default-character-set=utf8mb4 ${DATABASE_NAME}"
     INIT_CMDS="SET NAMES utf8mb4; SET autocommit=1; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;"
 
     local file_type
@@ -221,10 +225,15 @@ restore_database_file() {
     local restore_status=$?
     set +o pipefail
 
+    unset MYSQL_PWD
+
     if [ $restore_status -eq 0 ]; then
         info "数据库恢复成功，正在恢复约束设置、提交事务并刷新权限..."
-        # 关键修复 3：开启外键约束并提交
-        mysql -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" -e "SET FOREIGN_KEY_CHECKS=1; SET UNIQUE_CHECKS=1; COMMIT; FLUSH PRIVILEGES;"
+        
+        # 刷新权限与提交
+        export MYSQL_PWD="${MYSQL_PASSWORD}"
+        mysql -u"${MYSQL_USER}" -e "SET FOREIGN_KEY_CHECKS=1; SET UNIQUE_CHECKS=1; COMMIT; FLUSH PRIVILEGES;"
+        unset MYSQL_PWD
         
         # 恢复完成后重启 Tomcat
         start_tomcat
@@ -255,7 +264,7 @@ restore_tomcat_file() {
     sudo tar -P -xzvf "$tar_file" -C /
     
     if [ $? -eq 0 ]; then
-        # 关键修复 4：提高权限保证写权限
+        # 修正权限，保证非 root 运行账户拥有写权限
         sudo chmod -R 777 "${TOMCAT_WEBAPP_DIR}"
         info "Tomcat webapp 恢复成功"
         start_tomcat
@@ -443,7 +452,6 @@ upload_logs() {
         include_appserver=${include_appserver:-n}
     fi
 
-    # 安全检查：防止没有找到文件时打包报错
     if [ ${#log_files[@]} -eq 0 ] && [[ "$include_appserver" != "y" && "$include_appserver" != "Y" ]]; then
         error "未在此目录下找到符合条件的日志文件"
         return 1
