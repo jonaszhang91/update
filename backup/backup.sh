@@ -46,10 +46,33 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Tomcat 服务控制统一封装
+# Tomcat 服务控制统一封装（带超时强杀机制，防止卡死）
 stop_tomcat() {
     info "正在停止 Tomcat 服务..."
-    sudo systemctl stop tomcat 2>/dev/null || sudo service tomcat stop 2>/dev/null || true
+    
+    # 后台异步发起停止指令
+    (sudo systemctl stop tomcat 2>/dev/null || sudo service tomcat stop 2>/dev/null) &
+    local stop_pid=$!
+
+    # 轮询等待最多 10 秒
+    local timeout=10
+    local count=0
+    while kill -0 $stop_pid 2>/dev/null; do
+        if [ $count -ge $timeout ]; then
+            warn "Tomcat 未能在 ${timeout} 秒内正常停止，正在强制杀死进程..."
+            break
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+
+    # 兜底强杀，确保彻底断开数据库连接与写锁
+    if pgrep -f "apache-tomcat" > /dev/null; then
+        sudo pkill -9 -f "apache-tomcat" 2>/dev/null || true
+        info "已强制终止 Tomcat 进程"
+    else
+        info "Tomcat 服务已正常停止"
+    fi
 }
 
 start_tomcat() {
@@ -86,7 +109,7 @@ install_or_update_rclone() {
 }
 
 check_dependencies() {
-    local deps=("mysqldump" "mysql" "tar" "gzip" "zcat" "gunzip" "xz" "bunzip2" "sudo" "curl")
+    local deps=("mysqldump" "mysql" "tar" "gzip" "zcat" "gunzip" "xz" "bunzip2" "sudo" "curl" "pgrep" "pkill")
     for cmd in "${deps[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
             error "命令 $cmd 未找到，请先安装"
@@ -126,7 +149,7 @@ do_backup() {
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)_$$
 
-    # 1. 备份数据库 (使用 MYSQL_PWD 传递密码，免疫特殊字符)
+    # 1. 备份数据库 (通过 MYSQL_PWD 变量安全传递密码，免疫特殊字符)
     if [[ "$backup_db" == "y" || "$backup_db" == "Y" ]]; then
         SQL_FILE="${DATABASE_NAME}_${TIMESTAMP}.sql.gz"
         SQL_LOCAL_PATH="${BACKUP_DIR}/${SQL_FILE}"
@@ -195,10 +218,10 @@ restore_database_file() {
     local file_path="$1"
     info "正在恢复数据库从: $(basename "$file_path")"
 
-    # 1. 恢复前强制停止 Tomcat，断开连接与写锁
+    # 1. 恢复前强制停止 Tomcat，断开长连接与排他锁
     stop_tomcat
 
-    # 2. 使用环境变量 MYSQL_PWD 传递密码，完美解决引号转义报错
+    # 2. 导出密码环境变量，彻底避开 Bash 命令解释器对密码中 $ ! 等符号的解析陷阱
     export MYSQL_PWD="${MYSQL_PASSWORD}"
     
     MYSQL_EXEC="mysql -u${MYSQL_USER} --default-character-set=utf8mb4 ${DATABASE_NAME}"
@@ -230,12 +253,12 @@ restore_database_file() {
     if [ $restore_status -eq 0 ]; then
         info "数据库恢复成功，正在恢复约束设置、提交事务并刷新权限..."
         
-        # 刷新权限与提交
+        # 恢复约束与刷新权限
         export MYSQL_PWD="${MYSQL_PASSWORD}"
         mysql -u"${MYSQL_USER}" -e "SET FOREIGN_KEY_CHECKS=1; SET UNIQUE_CHECKS=1; COMMIT; FLUSH PRIVILEGES;"
         unset MYSQL_PWD
         
-        # 恢复完成后重启 Tomcat
+        # 恢复完成后重新拉起 Tomcat 服务
         start_tomcat
     else
         error "数据库恢复失败"
@@ -264,7 +287,7 @@ restore_tomcat_file() {
     sudo tar -P -xzvf "$tar_file" -C /
     
     if [ $? -eq 0 ]; then
-        # 修正权限，保证非 root 运行账户拥有写权限
+        # 修正权限，保证 web 服务具备充分写权限
         sudo chmod -R 777 "${TOMCAT_WEBAPP_DIR}"
         info "Tomcat webapp 恢复成功"
         start_tomcat
