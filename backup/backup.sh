@@ -149,7 +149,7 @@ do_backup() {
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)_$$
 
-    # 1. 备份数据库 (通过 MYSQL_PWD 变量安全传递密码，免疫特殊字符)
+    # 1. 备份数据库（已优化：InnoDB 无锁高效导出，支持跨版本导入）
     if [[ "$backup_db" == "y" || "$backup_db" == "Y" ]]; then
         SQL_FILE="${DATABASE_NAME}_${TIMESTAMP}.sql.gz"
         SQL_LOCAL_PATH="${BACKUP_DIR}/${SQL_FILE}"
@@ -157,13 +157,19 @@ do_backup() {
         
         export MYSQL_PWD="${MYSQL_PASSWORD}"
         set -o pipefail
+        
         mysqldump -u"${MYSQL_USER}" \
             --default-character-set=utf8mb4 \
             --single-transaction \
             --quick \
+            --opt \
             --hex-blob \
-            --triggers --routines --events \
-            "${DATABASE_NAME}" | gzip > "${SQL_LOCAL_PATH}"
+            --routines \
+            --triggers \
+            --events \
+            --set-gtid-purged=OFF \
+            "${DATABASE_NAME}" 2>/dev/null | gzip > "${SQL_LOCAL_PATH}"
+            
         local dump_status=$?
         set +o pipefail
         unset MYSQL_PWD
@@ -216,7 +222,7 @@ do_backup() {
 # ==================== 恢复通用函数 ====================
 restore_database_file() {
     local file_path="$1"
-    info "正在恢复数据库从: $(basename "$file_path")"
+    info "正在准备恢复数据库，来源文件: $(basename "$file_path")"
 
     # 1. 恢复前强制停止 Tomcat，断开长连接与排他锁
     stop_tomcat
@@ -224,6 +230,20 @@ restore_database_file() {
     # 2. 导出密码环境变量，彻底避开 Bash 命令解释器对密码中 $ ! 等符号的解析陷阱
     export MYSQL_PWD="${MYSQL_PASSWORD}"
     
+    # 3. 执行清库操作（重建干净数据库，防止老表残留和主键冲突）
+    info "正在清空旧数据库 ${DATABASE_NAME} 并重新创建..."
+    mysql -u"${MYSQL_USER}" --default-character-set=utf8mb4 -e \
+        "DROP DATABASE IF EXISTS \`${DATABASE_NAME}\`; CREATE DATABASE \`${DATABASE_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+    
+    if [ $? -ne 0 ]; then
+        error "清空数据库失败，停止恢复"
+        unset MYSQL_PWD
+        start_tomcat
+        exit 1
+    fi
+    info "数据库清空完成，开始导入 SQL 数据..."
+
+    # 4. 执行数据恢复
     MYSQL_EXEC="mysql -u${MYSQL_USER} --default-character-set=utf8mb4 ${DATABASE_NAME}"
     INIT_CMDS="SET NAMES utf8mb4; SET autocommit=1; SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0;"
 
@@ -248,13 +268,8 @@ restore_database_file() {
     local restore_status=$?
     set +o pipefail
 
-    unset MYSQL_PWD
-
     if [ $restore_status -eq 0 ]; then
-        info "数据库恢复成功，正在恢复约束设置、提交事务并刷新权限..."
-        
-        # 恢复约束与刷新权限
-        export MYSQL_PWD="${MYSQL_PASSWORD}"
+        info "数据导入成功，正在恢复约束设置、提交事务并刷新权限..."
         mysql -u"${MYSQL_USER}" -e "SET FOREIGN_KEY_CHECKS=1; SET UNIQUE_CHECKS=1; COMMIT; FLUSH PRIVILEGES;"
         unset MYSQL_PWD
         
@@ -262,6 +277,7 @@ restore_database_file() {
         start_tomcat
     else
         error "数据库恢复失败"
+        unset MYSQL_PWD
         start_tomcat # 即使失败也尝试拉起服务
         exit 1
     fi
