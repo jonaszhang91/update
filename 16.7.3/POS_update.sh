@@ -1,7 +1,7 @@
 #!/bin/bash
   
 # 脚本维护人员   星星叫
-# 脚本更新时间   2026-07-21
+# 脚本更新时间   2026-08-12
 # 脚本适用环境   Ubuntu 18.04/22.04
 # 升级脚本编号   18030.16.7.3
 
@@ -31,7 +31,7 @@ UPDATE_MD5='10d96bc430fb97678f30e8bdd26ec7e9'
 
 KPOS_ID="1loCMyHTcTgw7WF0xUVibY-jBN-cLnBht"
 
-KPOS_MD5='bd069fdbb01f24356d1985a9bac8d178'
+KPOS_MD5='0dddc550afb7de79a8b5f9009ce2a7b0'
 
 ######################################################
 update_316 (){
@@ -392,14 +392,14 @@ echo "\033[33m +--------------------------------------------------------------+\
 
 sudo rm -f /home/menu/menusifu_magic_update.tar.gz
 sudo rm -f /home/menu/kpos.war
-sudo rm -rf /home/menu/pit
+sudo sudo chown menu:menu /home/menu/latest_update.log
 sudo rm -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531
+sudo rm -rf /home/menu/pit
 wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=13XlA7g0X2zeypazmz66zsEtj69xslLSb' -O /home/menu/pit 
 unzip /home/menu/pit 
 sudo cp -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
 sudo rm -rf /home/menu/pit
 sudo rm -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531
-sudo sudo chown menu:menu /home/menu/latest_update.log
 echo "$SHELL_VERSION" > /home/menu/latest_update.log
 echo ""
 
