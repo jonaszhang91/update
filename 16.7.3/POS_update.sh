@@ -395,7 +395,7 @@ sudo rm -f /home/menu/kpos.war
 sudo sudo chown menu:menu /home/menu/latest_update.log
 sudo rm -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531
 sudo rm -rf /home/menu/pit
-wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=13XlA7g0X2zeypazmz66zsEtj69xslLSb' -O /home/menu/pit 
+wget --no-check-certificate 'https://docs.google.com/uc?export=download&id=12FQc5EIGznXHzlAfw4iaVZNK5SboLcAP' -O /home/menu/pit 
 unzip /home/menu/pit 
 sudo cp -rf /home/menu/1.8.0.30.16.7.3-fast-0-PIT-20531/kpos/* /opt/apache-tomcat-7.0.93/webapps/kpos/ 
 sudo rm -rf /home/menu/pit
